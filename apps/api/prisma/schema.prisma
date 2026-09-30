@@ -1,0 +1,618 @@
+// مخطط قاعدة بيانات منصة مس آن بهاء للعلوم
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ASSISTANT
+  ADMIN
+}
+
+enum Grade {
+  FOURTH_PRIMARY
+  FIFTH_PRIMARY
+  SIXTH_PRIMARY
+}
+
+enum CourseType {
+  MONTHLY
+  FOUNDATION
+  REVISION
+}
+
+enum Term {
+  FIRST
+  SECOND
+}
+
+enum EnrollmentSource {
+  CODE
+  ONLINE
+  ADMIN
+  WALLET
+  FREE
+}
+
+enum WalletTxType {
+  TOPUP
+  PURCHASE
+  REFUND
+}
+
+enum CodeStatus {
+  ACTIVE
+  USED
+  DISABLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum PaymentPurpose {
+  TOPUP
+  COURSE
+}
+
+enum QuestionType {
+  MCQ
+  TRUEFALSE
+  // أسئلة كتابية — تصحيح يدوي من المس
+  ESSAY
+  COMPLETE
+  TERM
+}
+
+// متى تظهر الدرجة والمراجعة للطالب
+enum ResultRelease {
+  IMMEDIATE
+  AFTER_END
+  MANUAL
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+enum LiveProvider {
+  ZOOM
+  MEET
+}
+
+enum NotifChannel {
+  IN_APP
+  WHATSAPP
+  SMS
+}
+
+// نوع الإشعار: يحدد القالب ومن يرى الرسالة (OTP لا يُعرض في الصندوق ولا يُخزَّن نصه)
+enum NotifType {
+  GENERAL
+  OTP
+  PARENT_EXAM_RESULT
+  LIVE_REMINDER
+  ENROLLMENT_EXPIRY
+}
+
+enum NotifStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum AttachmentType {
+  PDF
+  FILE
+}
+
+enum VideoProvider {
+  BUNNY
+  YOUTUBE
+}
+
+enum OtpPurpose {
+  ACTIVATION
+  RESET
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String?  @unique
+  phone        String   @unique
+  parentPhone  String
+  passwordHash String
+  role         Role     @default(STUDENT)
+  grade        Grade?
+  governorate  String   @default("")
+  isActive     Boolean  @default(false)
+  deviceLimit  Int      @default(2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallet         Wallet?
+  devices        Device[]
+  refreshTokens  RefreshToken[]
+  enrollments    Enrollment[]
+  lessonProgress LessonProgress[]
+  examAttempts   ExamAttempt[]
+  submissions    HomeworkSubmission[]
+  notifications  Notification[]
+  payments       Payment[]
+  redeemedCodes  RedeemCode[]
+
+  @@index([grade])
+  @@index([role])
+}
+
+model Device {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceFingerprint String
+  userAgent         String   @default("")
+  ip                String   @default("")
+  lastSeen          DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, deviceFingerprint])
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  // "تذكّرني": كوكي دائم 30 يوماً (يتجدد مع كل تجديد)؛ بدونه كوكي جلسة ينتهي بإغلاق المتصفح
+  remember  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Otp {
+  id         Int        @id @default(autoincrement())
+  phone      String
+  codeHash   String
+  purpose    OtpPurpose
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([phone, purpose])
+}
+
+model Course {
+  id          Int        @id @default(autoincrement())
+  title       String
+  description String     @db.Text
+  grade       Grade
+  type        CourseType @default(MONTHLY)
+  term        Term?
+  month       Int?
+  price       Int        @default(0)
+  coverImage  String?
+  isPublished Boolean    @default(false)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  lessons      Lesson[]
+  enrollments  Enrollment[]
+  payments     Payment[]
+  exams        Exam[]
+  homeworks    Homework[]
+  liveSessions LiveSession[]
+  broadcasts   NotificationBroadcast[]
+
+  @@index([grade, isPublished])
+  @@index([type])
+}
+
+model Lesson {
+  id             Int           @id @default(autoincrement())
+  courseId       Int
+  course         Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title          String
+  order          Int           @default(0)
+  videoProvider  VideoProvider @default(BUNNY)
+  bunnyVideoId   String?
+  youtubeVideoId String?
+  durationSec    Int           @default(0)
+  isFreePreview  Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  attachments Attachment[]
+  progress    LessonProgress[]
+  homeworks   Homework[]
+
+  @@index([courseId])
+}
+
+model Attachment {
+  id       Int            @id @default(autoincrement())
+  lessonId Int
+  lesson   Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type     AttachmentType @default(PDF)
+  url      String
+  title    String
+
+  @@index([lessonId])
+}
+
+model LessonProgress {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId        Int
+  lesson          Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  percent         Float     @default(0)
+  lastPositionSec Int       @default(0)
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+}
+
+model Enrollment {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  Int
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  source    EnrollmentSource @default(CODE)
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@index([expiresAt])
+}
+
+model Wallet {
+  id           Int                 @id @default(autoincrement())
+  userId       Int                 @unique
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // بالقرش — قيد CHECK (balance >= 0) في قاعدة البيانات يمنع الرصيد السالب
+  balance      Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id           Int          @id @default(autoincrement())
+  walletId     Int
+  wallet       Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount       Int
+  type         WalletTxType
+  refId        String?
+  balanceAfter Int
+  note         String       @default("")
+  createdAt    DateTime     @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+model CodeBatch {
+  id        Int          @id @default(autoincrement())
+  label     String
+  value     Int
+  count     Int
+  createdBy Int
+  createdAt DateTime     @default(now())
+  codes     RedeemCode[]
+}
+
+model RedeemCode {
+  id           Int        @id @default(autoincrement())
+  codeHash     String     @unique
+  codeHint     String     @default("")
+  value        Int
+  batchId      Int
+  batch        CodeBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  status       CodeStatus @default(ACTIVE)
+  usedByUserId Int?
+  usedBy       User?      @relation(fields: [usedByUserId], references: [id])
+  usedAt       DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@index([status])
+  @@index([batchId])
+}
+
+model Payment {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider      String         @default("PAYMOB")
+  amount        Int
+  status        PaymentStatus  @default(PENDING)
+  purpose       PaymentPurpose
+  // رقم طلب Paymob (order.id) — يُربط به إشعار الـ webhook
+  providerRef   String?        @unique
+  // رقم معاملة Paymob (obj.id) — فريد لمنع تنفيذ نفس الإشعار مرتين
+  providerTxnId String?        @unique
+  courseId      Int?
+  course        Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  paidAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Exam {
+  id           Int       @id @default(autoincrement())
+  courseId     Int?
+  course       Course?   @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  title        String
+  description  String    @default("")
+  grade        Grade
+  // المدة بالدقائق — CHECK > 0
+  durationMin  Int
+  startAt      DateTime?
+  endAt        DateTime?
+  shuffle      Boolean   @default(true)
+  // AFTER_END يتطلب endAt (CHECK)؛ MANUAL يُفتح بـ resultsReleasedAt
+  resultRelease     ResultRelease @default(MANUAL)
+  resultsReleasedAt DateTime?
+  // نسبة النجاح المئوية من مجموع الدرجات (0–100) — CHECK
+  passScore    Int       @default(50)
+  notifyParent Boolean   @default(true)
+  isPublished  Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  questions Question[]
+  attempts  ExamAttempt[]
+
+  @@index([grade, isPublished])
+  @@index([courseId])
+}
+
+model Question {
+  id       Int          @id @default(autoincrement())
+  examId   Int
+  exam     Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  type     QuestionType @default(MCQ)
+  text     String       @db.Text
+  imageUrl String?
+  points   Int          @default(1)
+  order    Int          @default(0)
+  // الإجابة النموذجية للأسئلة الكتابية (للمصحّح، وتظهر للطالب في المراجعة)
+  modelAnswer String?   @db.Text
+
+  choices Choice[]
+  answers Answer[]
+
+  @@index([examId])
+}
+
+model Choice {
+  id         Int      @id @default(autoincrement())
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+
+  answers Answer[]
+
+  @@index([questionId])
+}
+
+model ExamAttempt {
+  id                   Int           @id @default(autoincrement())
+  examId               Int
+  exam                 Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  userId               Int
+  user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt            DateTime      @default(now())
+  // موعد الانتهاء من الخادم = startedAt + durationMin (بحد أقصى endAt) — يُحسب مرة عند البدء
+  deadlineAt           DateTime
+  submittedAt          DateTime?
+  score                Int?
+  totalPoints          Int           @default(0)
+  status               AttemptStatus @default(IN_PROGRESS)
+  // ترتيب الأسئلة كما عُرض للطالب (مخلوط لو shuffle) — ثابت عند إعادة فتح الامتحان
+  questionOrder        Int[]
+  // outbox: وقت دفع إشعار ولي الأمر للطابور (null = لم يُدفع بعد، الكانس يعيد المحاولة)
+  parentNotifyQueuedAt DateTime?
+  // اكتمل التصحيح (فوراً للموضوعي، وبعد تصحيح المس لو فيه إجابات كتابية)
+  gradedAt             DateTime?
+  // وقت إنشاء رسالة ولي الأمر (Notification صادرة) — يمنع التكرار من الـ job؛ حالة التسليم في الرسالة نفسها
+  parentNotifiedAt     DateTime?
+
+  answers Answer[]
+
+  @@unique([examId, userId])
+  @@index([userId])
+  @@index([status, deadlineAt])
+}
+
+model Answer {
+  id         Int         @id @default(autoincrement())
+  attemptId  Int
+  attempt    ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId Int
+  question   Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  // اختيار (موضوعي) أو نص (كتابي) — واحد فقط بالضبط (CHECK)
+  choiceId   Int?
+  choice     Choice?     @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  text       String?     @db.Text
+  // يُكتب بـ SQL عند الحفظ فقط (لا @updatedAt: التصحيح لا يغيّر وقت الحفظ)
+  savedAt    DateTime    @default(now())
+  // التصحيح اليدوي
+  awardedPoints Int?
+  feedback      String?  @db.Text
+  gradedAt      DateTime?
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+}
+
+model Homework {
+  id             Int       @id @default(autoincrement())
+  courseId       Int
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessonId       Int?
+  lesson         Lesson?   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  title          String
+  description    String    @default("")
+  dueAt          DateTime?
+  // الدرجة النهائية للواجب (CHECK 1..100) — التصحيح يُتحقق منه مقابلها
+  maxGrade       Int       @default(10)
+  // مرفق الواجب (PDF/صورة) في التخزين الخاص — يُقدَّم عبر endpoint مصادَق للمشترك فقط
+  attachmentKey  String?
+  attachmentMime String?
+  attachmentName String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  submissions HomeworkSubmission[]
+
+  @@index([courseId, dueAt])
+  @@index([lessonId])
+}
+
+model HomeworkSubmission {
+  id          Int       @id @default(autoincrement())
+  homeworkId  Int
+  homework    Homework  @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // ملف الطالب في التخزين الخاص (اسم عشوائي) — لا يُقدَّم أبداً عبر /api/uploads العام
+  fileKey     String
+  fileMime    String
+  fileName    String
+  fileSize    Int
+  grade       Int?
+  feedback    String    @default("")
+  submittedAt DateTime  @default(now())
+  gradedAt    DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([homeworkId, userId])
+  @@index([userId])
+  @@index([homeworkId, submittedAt])
+}
+
+model LiveSession {
+  id          Int          @id @default(autoincrement())
+  courseId    Int
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  provider    LiveProvider @default(ZOOM)
+  joinUrl     String
+  startAt     DateTime
+  durationMin Int          @default(60)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([courseId, startAt])
+  @@index([startAt])
+}
+
+enum BroadcastAudience {
+  ALL
+  GRADE
+  COURSE
+}
+
+// صف واحد لكل رسالة: IN_APP = صندوق إشعارات المستخدم (SENT دائماً)؛ WHATSAPP/SMS = رسالة صادرة
+// لرقم toPhone (الطالب أو ولي أمره) تمر بـ PENDING ← SENT/FAILED عبر طابور messages.
+// فهرس جزئي في الـ migration (لا يُعبَّر عنه هنا): Notification_outbox_idx (status, id) WHERE channel <> 'IN_APP'
+// ← احذف سطر DROP INDEX الخاص به من أي diff يولّده Prisma لاحقاً.
+model Notification {
+  id                Int                    @id @default(autoincrement())
+  userId            Int
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title             String
+  body              String
+  type              NotifType              @default(GENERAL)
+  channel           NotifChannel           @default(IN_APP)
+  status            NotifStatus            @default(SENT)
+  isRead            Boolean                @default(false)
+  // الرسائل الصادرة فقط
+  toPhone           String?
+  attempts          Int                    @default(0)
+  lastError         String?
+  sentAt            DateTime?
+  providerMessageId String?
+  // حجز الإرسال: عامل واحد يرسل في نفس الوقت، والحجز المنتهي (عامل توقف) يُستعاد
+  lockedUntil       DateTime?
+  // مفتاح منع التكرار (رسالة واحدة لكل محاولة امتحان/حصة/اشتراك/بث لكل مستلم وقناة)
+  dedupeKey         String?                @unique
+  broadcastId       Int?
+  broadcast         NotificationBroadcast? @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  createdAt         DateTime               @default(now())
+
+  // صندوق المستخدم (الكل) + غير المقروء (العدّاد index-only، والقائمة المفلترة، وقراءة الكل)
+  @@index([userId, channel, id])
+  @@index([userId, channel, isRead, id])
+  @@index([broadcastId])
+}
+
+// إرسال جماعي من الأدمن — التوزيع على المستلمين يتم في job على دفعات
+model NotificationBroadcast {
+  id           Int               @id @default(autoincrement())
+  title        String
+  body         String
+  audience     BroadcastAudience
+  grade        Grade?
+  courseId     Int?
+  course       Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  alsoWhatsapp Boolean           @default(false)
+  recipients   Int               @default(0)
+  completedAt  DateTime?
+  createdAt    DateTime          @default(now())
+
+  notifications Notification[]
+
+  @@index([completedAt])
+}
+
+// نص قابل للتعديل لكل (مفتاح، قناة): مفاتيح النظام لها نص افتراضي في الكود وهذا الصف يتجاوزه،
+// والمفاتيح المخصّصة قوالب جاهزة للإرسال الجماعي. المتغيّرات المسموحة معرّفة في packages/shared.
+model NotificationTemplate {
+  id        Int          @id @default(autoincrement())
+  key       String
+  channel   NotifChannel
+  title     String       @default("")
+  body      String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([key, channel])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actorId   Int?
+  action    String
+  entity    String
+  meta      Json?
+  ip        String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity])
+}
