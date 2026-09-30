@@ -5,8 +5,11 @@ export const egyptianPhone = z
   .string()
   .regex(/^01[0125]\d{8}$/, 'رقم موبايل مصري غير صحيح');
 
+// رقم الصفحة بحد أعلى: ?page=1e20 كان يمر كعدد صحيح ويُسقط Prisma بـ 500 (أو OFFSET عميق جداً)
+export const pageNumber = z.coerce.number().int().min(1).max(10_000).default(1);
+
 export const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(12),
 });
 export type Pagination = z.infer<typeof paginationSchema>;

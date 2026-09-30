@@ -137,6 +137,8 @@ model User {
   governorate  String   @default("")
   isActive     Boolean  @default(false)
   deviceLimit  Int      @default(2)
+  // إنهاء الجلسات (كلمة مرور جديدة / إزالة جهاز / تعطيل): توكنات الوصول الصادرة قبلها مرفوضة فوراً
+  sessionsRevokedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -152,7 +154,11 @@ model User {
   redeemedCodes  RedeemCode[]
 
   @@index([grade])
-  @@index([role])
+  // عدّ الطلاب + الجدد يومياً (الإحصائيات) وقائمة الطلاب حسب الدور
+  @@index([role, createdAt])
+  // بحث الأدمن بجزء من الاسم/الموبايل (ILIKE) — امتداد pg_trgm في الـ migration
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "User_name_trgm_idx")
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "User_phone_trgm_idx")
 }
 
 model Device {
@@ -176,6 +182,8 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  // أُبطل بالتدوير (لا بالخروج/الإنهاء) ← استخدامه مرة أخرى = سرقة محتملة فتُنهى كل الجلسات
+  rotated   Boolean   @default(false)
   // "تذكّرني": كوكي دائم 30 يوماً (يتجدد مع كل تجديد)؛ بدونه كوكي جلسة ينتهي بإغلاق المتصفح
   remember  Boolean   @default(true)
   createdAt DateTime  @default(now())
@@ -266,7 +274,8 @@ model LessonProgress {
   updatedAt       DateTime  @updatedAt
 
   @@unique([userId, lessonId])
-  @@index([userId])
+  // آخر حصة شاهدها الطالب (لوحة الطالب)
+  @@index([userId, updatedAt])
 }
 
 model Enrollment {
@@ -283,6 +292,8 @@ model Enrollment {
   @@index([userId])
   @@index([courseId])
   @@index([expiresAt])
+  // أحدث الاشتراكات + الاشتراكات الجديدة يومياً (الإحصائيات)
+  @@index([createdAt])
 }
 
 model Wallet {
@@ -335,6 +346,8 @@ model RedeemCode {
 
   @@index([status])
   @@index([batchId])
+  // إيراد الكروت المستخدمة يومياً (الإحصائيات)
+  @@index([usedAt])
 }
 
 model Payment {
@@ -357,6 +370,9 @@ model Payment {
 
   @@index([userId])
   @@index([status])
+  // إيراد الدفع الأونلاين يومياً (PAID حسب paidAt) + أحدث المدفوعات
+  @@index([status, paidAt])
+  @@index([createdAt])
 }
 
 model Exam {
@@ -613,6 +629,18 @@ model AuditLog {
   ip        String   @default("")
   createdAt DateTime @default(now())
 
-  @@index([actorId])
-  @@index([entity])
+  // عارض السجل: كل فلتر + الأحدث أولاً (id) من نفس الفهرس، والمدى الزمني بـ createdAt
+  @@index([actorId, id])
+  @@index([entity, id])
+  @@index([action, id])
+  @@index([createdAt])
+}
+
+// إعدادات المنصة: صف واحد فقط (CHECK id = 1 في الـ migration) — أعمدة مُنمّطة بدل key/value
+model PlatformSettings {
+  id                       Int      @id @default(1)
+  // التسجيل يتطلب كود تحقق على الموبايل؛ false ← الحساب يُفعَّل فوراً بلا رسالة
+  requirePhoneVerification Boolean  @default(true)
+  updatedById              Int?
+  updatedAt                DateTime @updatedAt
 }

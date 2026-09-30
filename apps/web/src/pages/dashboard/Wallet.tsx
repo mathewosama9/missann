@@ -78,6 +78,7 @@ function RedeemForm() {
       toast.success(`تم شحن ${formatEGP(r.amount)} — رصيدك الآن ${formatEGP(r.balance)}`);
       setCode('');
       void qc.invalidateQueries({ queryKey: ['wallet'] });
+      void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
     },
     onError: (e) => toast.error(apiErrorMessage(e, 'تعذّر شحن الكود')),
   });

@@ -9,7 +9,7 @@ import type {
 
 export const authApi = {
   register: (data: Omit<RegisterInput, 'confirmPassword'> & { confirmPassword: string }) =>
-    api.post<{ message: string; phone: string }>('/auth/register', data).then((r) => r.data),
+    api.post<{ message: string; phone: string; requiresVerification: boolean }>('/auth/register', data).then((r) => r.data),
 
   verifyOtp: (data: VerifyOtpInput) =>
     api.post<{ message: string }>('/auth/verify-otp', data).then((r) => r.data),

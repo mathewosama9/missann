@@ -37,6 +37,7 @@ export function SubscribeModal({
       );
       void qc.invalidateQueries({ queryKey: ['course'] });
       void qc.invalidateQueries({ queryKey: ['wallet'] });
+      void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
       void qc.invalidateQueries({ queryKey: ['lesson-access'] });
       onClose();
     },

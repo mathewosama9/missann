@@ -11,4 +11,6 @@ export * from './schemas/exam.js';
 export * from './schemas/homework.js';
 export * from './schemas/live.js';
 export * from './schemas/notification.js';
+export * from './dashboard.js';
+export * from './schemas/admin.js';
 export * from './types.js';

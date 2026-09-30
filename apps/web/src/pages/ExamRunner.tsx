@@ -215,6 +215,7 @@ function Runner({ session }: { session: AttemptSessionDTO }) {
       leaving.current = true;
       qc.setQueryData(['exam-result', r.attemptId], r);
       void qc.invalidateQueries({ queryKey: ['exams'] });
+      void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
       qc.removeQueries({ queryKey: ['exam-session', session.examId] });
       toast.success(r.status === 'EXPIRED' ? 'انتهى الوقت وتم تسليم إجاباتك' : 'تم تسليم الامتحان');
       navigate(`/dashboard/exams/result/${r.attemptId}`, { replace: true });

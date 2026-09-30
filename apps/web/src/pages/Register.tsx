@@ -34,7 +34,8 @@ export function Register() {
     try {
       const res = await authApi.register(values);
       toast.success(res.message);
-      navigate(`/verify?phone=${encodeURIComponent(res.phone)}`);
+      // التحقق بالكود يحدده الأدمن؛ بدونه الحساب مفعّل فوراً ← صفحة الدخول
+      navigate(res.requiresVerification ? `/verify?phone=${encodeURIComponent(res.phone)}` : '/login');
     } catch (err) {
       const fields = apiErrorFields(err);
       if (fields) {

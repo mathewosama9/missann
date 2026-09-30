@@ -7,8 +7,9 @@ export function signAccessToken(payload: JwtPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: `${env.ACCESS_TTL_MIN}m` });
 }
 
-export function verifyAccessToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_ACCESS_SECRET) as unknown as JwtPayload;
+// iat (ثوانٍ) يضيفه jwt.sign تلقائياً — authGuard يقارنه بآخر إنهاء للجلسات
+export function verifyAccessToken(token: string): JwtPayload & { iat?: number } {
+  return jwt.verify(token, env.JWT_ACCESS_SECRET) as unknown as JwtPayload & { iat?: number };
 }
 
 // توكن التحديث: قيمة عشوائية طويلة تُخزَّن مجزّأة في قاعدة البيانات

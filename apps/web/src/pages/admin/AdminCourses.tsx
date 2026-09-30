@@ -11,6 +11,7 @@ import {
 } from '@miss-ann/shared';
 import { adminCoursesApi } from '../../features/courses/api';
 import { apiErrorMessage } from '../../lib/api';
+import { useAuth } from '../../store/auth';
 import { CourseForm } from '../../features/courses/CourseForm';
 import { Modal, ConfirmDialog } from '../../components/ui/Modal';
 import { Spinner } from '../../components/ui/Spinner';
@@ -19,6 +20,8 @@ export function AdminCourses() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  // حذف الكورس للأدمن فقط (الـ API يرفض المساعد بـ 403) ← الزر لا يظهر له
+  const isAdmin = useAuth((s) => s.user?.role === 'ADMIN');
 
   const listQ = useQuery({
     queryKey: ['admin', 'courses'],
@@ -139,13 +142,15 @@ export function AdminCourses() {
                       >
                         {c.isPublished ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
-                      <button
-                        className="grid h-9 w-9 place-items-center rounded-full text-coral-600 hover:bg-coral-100"
-                        onClick={() => setDeleteId(c.id)}
-                        title="حذف"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {isAdmin && (
+                        <button
+                          className="grid h-9 w-9 place-items-center rounded-full text-coral-600 hover:bg-coral-100"
+                          onClick={() => setDeleteId(c.id)}
+                          title="حذف"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

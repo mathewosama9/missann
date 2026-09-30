@@ -238,6 +238,7 @@ function UploadModal({ hw, onClose }: { hw: HomeworkItemDTO | null; onClose: () 
     onSuccess: (s) => {
       toast.success(s.isLate ? 'تم التسليم — مسجَّل كمتأخر' : 'تم تسليم الواجب');
       void qc.invalidateQueries({ queryKey: ['homework'] });
+      void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
       setFile(null);
       setProgress(0);
       onClose();

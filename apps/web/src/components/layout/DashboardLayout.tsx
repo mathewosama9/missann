@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, Link } from 'react-router-dom';
 import { Menu, X, LogOut, Globe, type LucideIcon } from 'lucide-react';
+import type { Role } from '@miss-ann/shared';
 import { useAuth } from '../../store/auth';
 import { useLogout } from '../../features/auth/useLogout';
 import { LogoMark } from '../brand/Logo';
@@ -11,6 +12,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   end?: boolean;
+  // الأدوار التي ترى الرابط (بدون = الكل) — إخفاء فقط؛ الحماية الفعلية في الـ API و AdminOnly
+  roles?: readonly Role[];
 }
 
 // notificationsHref: صفحة كل الإشعارات (رابط أسفل قائمة الجرس) — اختياري
@@ -18,6 +21,7 @@ export function DashboardLayout({ items, title, notificationsHref }: { items: Na
   const [open, setOpen] = useState(false);
   const user = useAuth((s) => s.user);
   const logout = useLogout();
+  const visible = items.filter((it) => !it.roles || (user && it.roles.includes(user.role)));
 
   return (
     <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[272px_1fr]">
@@ -41,7 +45,7 @@ export function DashboardLayout({ items, title, notificationsHref }: { items: Na
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
-          {items.map((it) => (
+          {visible.map((it) => (
             <NavLink
               key={it.to}
               to={it.to}

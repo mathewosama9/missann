@@ -659,3 +659,143 @@ export interface NotificationTemplateDTO {
   required: readonly string[];
   updatedAt: string | null;
 }
+
+// ── لوحات التحكم (Phase 8) ─────────────────────────────────────
+
+// لوحة الأدمن: المبالغ بالقرش، والأيام بتوقيت القاهرة (YYYY-MM-DD)
+export interface RevenueSplit {
+  online: number;
+  codes: number;
+  total: number;
+}
+
+export interface AdminStatsDTO {
+  kpis: {
+    students: number;
+    activeEnrollments: number;
+    usedCodes: number;
+    revenueToday: RevenueSplit;
+    revenueMonth: RevenueSplit;
+  };
+  daily: { day: string; online: number; codes: number; enrollments: number; students: number }[];
+  studentsByGrade: { grade: Grade | null; count: number }[];
+  latestEnrollments: {
+    id: number;
+    source: EnrollmentSource;
+    createdAt: string;
+    expiresAt: string;
+    user: { id: number; name: string };
+    course: { id: number; title: string };
+  }[];
+  latestPayments: {
+    id: number;
+    amount: number;
+    status: PaymentStatus;
+    purpose: PaymentPurpose;
+    createdAt: string;
+    user: { id: number; name: string };
+    courseTitle: string | null;
+  }[];
+  generatedAt: string;
+}
+
+export interface AdminStudentListItemDTO {
+  id: number;
+  name: string;
+  phone: string;
+  parentPhone: string;
+  grade: Grade | null;
+  governorate: string;
+  isActive: boolean;
+  createdAt: string;
+  balance: number;
+  activeEnrollments: number;
+}
+
+export interface UserDeviceDTO {
+  id: number;
+  userAgent: string;
+  ip: string;
+  lastSeen: string;
+  createdAt: string;
+}
+
+export interface AdminStudentDetailDTO extends AdminStudentListItemDTO {
+  email: string | null;
+  deviceLimit: number;
+  stars: number;
+  enrollments: {
+    id: number;
+    courseId: number;
+    courseTitle: string;
+    source: EnrollmentSource;
+    createdAt: string;
+    expiresAt: string;
+    active: boolean;
+  }[];
+  devices: UserDeviceDTO[];
+  recentAttempts: { id: number; examId: number; examTitle: string; score: number | null; totalPoints: number; submittedAt: string | null }[];
+}
+
+// تُعرض مرة واحدة فقط ولا تُخزَّن نصاً
+export interface TempPasswordDTO {
+  userId: number;
+  tempPassword: string;
+}
+
+export interface StaffDTO {
+  id: number;
+  name: string;
+  phone: string;
+  email: string | null;
+  role: Role;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface PlatformSettingsDTO {
+  requirePhoneVerification: boolean;
+  updatedAt: string;
+  updatedBy: { id: number; name: string } | null;
+}
+
+export interface AuditLogDTO {
+  id: number;
+  action: string;
+  entity: string;
+  actor: { id: number; name: string; role: Role } | null;
+  // قيم meta مسطّحة كنص (المفاتيح الحساسة محذوفة، والنصوص الطويلة مقصوصة)
+  meta: { key: string; value: string }[];
+  ip: string;
+  createdAt: string;
+}
+
+// ── لوحة الطالب ──────────────────────────────────────────────────
+export interface MyCourseDTO {
+  courseId: number;
+  title: string;
+  coverImage: string | null;
+  grade: Grade;
+  type: CourseType;
+  source: EnrollmentSource;
+  expiresAt: string;
+  active: boolean;
+  lessonsCount: number;
+  completedLessons: number;
+  // نسبة الإكمال (الحصص المكتملة ÷ كل الحصص) 0–100
+  percent: number;
+  // أول حصة لم تكتمل (بالترتيب) — "كمّل من هنا"
+  nextLessonId: number | null;
+  lastWatchedAt: string | null;
+}
+
+export interface StudentOverviewDTO {
+  balance: number;
+  stars: number;
+  activeCourses: MyCourseDTO[];
+  activeCoursesCount: number;
+  lastLesson: { lessonId: number; lessonTitle: string; courseId: number; courseTitle: string; percent: number; updatedAt: string } | null;
+  recentResults: { attemptId: number; examId: number; title: string; score: number; totalPoints: number; submittedAt: string | null }[];
+  upcomingExams: number;
+  requiredHomework: number;
+}

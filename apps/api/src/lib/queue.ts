@@ -82,6 +82,24 @@ async function withTimeout(op: () => Promise<unknown>, failMsg: string, log: Rec
   }
 }
 
+// حالات jobs بنفس المهلة: Redis متوقف ← null (المستدعي يتخطّى ولا يعلق الكنّاس كله حتى يعود الاتصال)
+export async function jobStates(key: QueueKey, jobIds: string[]): Promise<string[] | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      Promise.all(jobIds.map((id) => getQueue(key).getJobState(id))),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ENQUEUE_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, queue: key }, 'تعذّر قراءة حالات jobs');
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // دفع job بدون أن يعلق الطلب. jobId ثابت ← الإضافة المكرّرة لا تنشئ job ثانياً
 // (وقد يصل الـ job متأخراً رغم المهلة: jobId + تعليم الإرسال داخل العامل يمنعان التكرار)
 export function enqueue(

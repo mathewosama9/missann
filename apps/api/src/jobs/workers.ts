@@ -37,7 +37,7 @@ async function maintenanceJob(job: Job) {
   }
   if (job.name === JOBS.sweepNotifications) {
     const r = await flushNotificationOutbox();
-    if (r.messages || r.broadcasts || r.expiredOtp) logger.info(r, 'كنّاس الإشعارات');
+    if (r.messages || r.broadcasts || r.expiredOtp || r.orphaned) logger.info(r, 'كنّاس الإشعارات');
     return r;
   }
   if (job.name === JOBS.expiryWarnings) return expiryWarningsJob();

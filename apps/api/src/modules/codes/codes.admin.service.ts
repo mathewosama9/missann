@@ -13,7 +13,7 @@ import {
 } from '@miss-ann/shared';
 import { LOCKED_TX, prisma } from '../../lib/prisma.js';
 import { conflict, notFound, paginate } from '../../lib/http.js';
-import { auditTx, audit } from '../../lib/audit.js';
+import { auditTx } from '../../lib/audit.js';
 import { hashRedeemCode } from '../wallet/wallet.service.js';
 
 // كود عشوائي من مصدر تشفيري (randomInt بلا انحياز)
@@ -98,16 +98,17 @@ export async function listCodes(filter: AdminCodesFilter) {
 
 // تعطيل كود متاح فقط (المستخدم لا يُعطَّل — الرصيد أُضيف بالفعل)
 export async function disableCode(req: Request, id: number): Promise<void> {
-  const { count } = await prisma.redeemCode.updateMany({
-    where: { id, status: 'ACTIVE' },
-    data: { status: 'DISABLED' },
+  // التعطيل والتدقيق في معاملة واحدة (يُكتبان معاً أو لا شيء)
+  const changed = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.redeemCode.updateMany({ where: { id, status: 'ACTIVE' }, data: { status: 'DISABLED' } });
+    if (count > 0) await auditTx(tx, req, 'CODE_DISABLE', 'RedeemCode', { codeId: id });
+    return count > 0;
   });
-  if (count === 0) {
+  if (!changed) {
     const exists = await prisma.redeemCode.findUnique({ where: { id }, select: { status: true } });
     if (!exists) throw notFound('الكود غير موجود');
     throw conflict(exists.status === 'USED' ? 'لا يمكن تعطيل كود مستخدم' : 'الكود معطّل بالفعل');
   }
-  await audit(req, 'CODE_DISABLE', 'RedeemCode', { codeId: id });
 }
 
 async function decorateBatches(

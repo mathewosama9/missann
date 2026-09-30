@@ -4,7 +4,8 @@ import * as svc from './auth.service.js';
 
 export async function registerHandler(req: Request, res: Response): Promise<void> {
   const result = await svc.register(req.body);
-  res.status(201).json({ message: 'تم إنشاء الحساب، أدخل كود التفعيل المرسل', ...result });
+  const message = result.requiresVerification ? 'تم إنشاء الحساب، أدخل كود التفعيل المرسل' : 'تم إنشاء الحساب، سجّل الدخول';
+  res.status(201).json({ message, ...result });
 }
 
 export async function verifyOtpHandler(req: Request, res: Response): Promise<void> {
@@ -47,11 +48,11 @@ export async function listDevicesHandler(req: Request, res: Response): Promise<v
 }
 
 export async function removeDeviceHandler(req: Request, res: Response): Promise<void> {
-  await svc.removeDevice(req.user!.sub, Number(req.params.id));
+  await svc.removeDevice(req.user!.sub, Number(req.params.id), req.cookies?.[REFRESH_COOKIE]);
   res.json({ message: 'تم إزالة الجهاز' });
 }
 
 export async function changePasswordHandler(req: Request, res: Response): Promise<void> {
-  await svc.changePassword(req.user!.sub, req.body.currentPassword, req.body.newPassword);
+  await svc.changePassword(req.user!.sub, req.body.currentPassword, req.body.newPassword, req.cookies?.[REFRESH_COOKIE]);
   res.json({ message: 'تم تغيير كلمة المرور' });
 }

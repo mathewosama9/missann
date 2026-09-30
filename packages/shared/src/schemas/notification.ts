@@ -10,12 +10,12 @@ import {
   templateSpec,
   templateVarErrors,
 } from '../notifications.js';
-import { dbId } from './common.js';
+import { dbId, pageNumber } from './common.js';
 
 // ── صندوق الإشعارات (أي مستخدم مسجّل — ملكه فقط) ─────────────────
 export const notificationListSchema = z.object({
   filter: z.enum(['all', 'unread']).default('all'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
 });
 export type NotificationListFilter = z.infer<typeof notificationListSchema>;
@@ -44,7 +44,7 @@ export const broadcastSchema = z
 export type BroadcastInput = z.infer<typeof broadcastSchema>;
 
 export const broadcastListSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(50).default(10),
 });
 export type BroadcastListFilter = z.infer<typeof broadcastListSchema>;
@@ -52,7 +52,7 @@ export type BroadcastListFilter = z.infer<typeof broadcastListSchema>;
 // سجل الرسائل الصادرة (واتساب/SMS) — الحالة إلزامية (الفهرس الجزئي status, id)
 export const adminMessagesFilterSchema = z.object({
   status: z.nativeEnum(NotifStatus).default('FAILED'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
 });
 export type AdminMessagesFilter = z.infer<typeof adminMessagesFilterSchema>;

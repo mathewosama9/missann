@@ -36,6 +36,7 @@ export function PaymentCallback() {
     clearPendingPayment();
     if (payment.status === 'PAID') {
       void qc.invalidateQueries({ queryKey: ['wallet'] });
+      void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
       void qc.invalidateQueries({ queryKey: ['course'] });
     }
   }, [settled, payment?.status, qc]);

@@ -12,17 +12,21 @@ export function StatCard({
   value,
   icon: Icon,
   tone = 'ink',
+  hint,
 }: {
   label: string;
   value: string;
   icon: LucideIcon;
   tone?: keyof typeof tones;
+  // سطر توضيحي صغير تحت الرقم (اختياري)
+  hint?: string;
 }) {
   return (
-    <div className="card flex items-start justify-between p-5">
-      <div>
+    <div className="card flex items-start justify-between gap-3 p-5">
+      <div className="min-w-0">
         <div className="text-sm text-ink-500">{label}</div>
-        <div className="mt-3 font-display text-3xl font-extrabold text-ink-900">{value}</div>
+        <div className="mt-3 break-words font-display text-3xl font-extrabold text-ink-900">{value}</div>
+        {hint && <div className="mt-1 text-xs text-ink-400">{hint}</div>}
       </div>
       <span className={`grid h-11 w-11 place-items-center rounded-full ${tones[tone]}`}>
         <Icon size={19} />

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LiveProvider } from '../enums.js';
 import { isAllowedJoinUrl, LIVE_PROVIDER_HOSTS, normalizeJoinUrl } from '../constants.js';
-import { dbId, DB_ID_MAX } from './common.js';
+import { dbId, DB_ID_MAX, pageNumber } from './common.js';
 
 const badUrl = (p: LiveProvider) => `رابط غير مسموح — يجب أن يبدأ بـ https:// ومن ${LIVE_PROVIDER_HOSTS[p].join(' أو ')}`;
 
@@ -33,7 +33,7 @@ export const liveUpdateSchema = liveBase
 export type LiveUpdateInput = z.infer<typeof liveUpdateSchema>;
 
 export const liveListFilterSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(50).default(12),
 });
 export type LiveListFilter = z.infer<typeof liveListFilterSchema>;
@@ -41,7 +41,7 @@ export type LiveListFilter = z.infer<typeof liveListFilterSchema>;
 export const adminLiveFilterSchema = z.object({
   courseId: z.coerce.number().int().positive().max(DB_ID_MAX).optional(),
   scope: z.enum(['upcoming', 'past']).default('upcoming'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type AdminLiveFilter = z.infer<typeof adminLiveFilterSchema>;

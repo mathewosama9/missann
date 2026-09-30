@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import type { Prisma } from '@prisma/client';
 import type {
   CourseCreateInput,
@@ -8,10 +9,15 @@ import type {
   CourseListItem,
 } from '@miss-ann/shared';
 import { z } from 'zod';
-import type { courseUpdateSchema, lessonUpdateSchema, attachmentCreateSchema } from '@miss-ann/shared';
+import type {
+  courseUpdateSchema,
+  lessonUpdateSchema,
+  attachmentCreateSchema,
+} from '@miss-ann/shared';
 import { prisma } from '../../lib/prisma.js';
 import { assertYouTubeEmbeddable } from '../../lib/youtube.js';
 import { badRequest, notFound, paginate } from '../../lib/http.js';
+import { auditTx } from '../../lib/audit.js';
 import { homeworkFileKeys, removeFiles } from '../homework/homework.admin.service.js';
 import { cancelReminders } from '../live/live.service.js';
 
@@ -104,62 +110,83 @@ export async function getAdminCourse(courseId: number): Promise<AdminCourseDTO> 
 }
 
 // ── إنشاء/تعديل/حذف كورس ────────────────────────────────────────
-export async function createCourse(data: CourseCreateInput): Promise<CourseListItem> {
-  const course = await prisma.course.create({
-    data: {
-      title: data.title,
-      description: data.description,
-      grade: data.grade,
-      type: data.type,
-      term: data.term ?? null,
-      month: data.month ?? null,
-      price: data.price,
-      coverImage: data.coverImage ?? null,
-      isPublished: data.isPublished ?? false,
-      order: data.order ?? 0,
-    },
-    include: { _count: { select: { lessons: true } } },
+// كل كتابة + سطر التدقيق في معاملة واحدة (يُكتبان معاً أو لا شيء)
+export async function createCourse(req: Request, data: CourseCreateInput): Promise<CourseListItem> {
+  const course = await prisma.$transaction(async (tx) => {
+    const c = await tx.course.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        grade: data.grade,
+        type: data.type,
+        term: data.term ?? null,
+        month: data.month ?? null,
+        price: data.price,
+        coverImage: data.coverImage ?? null,
+        isPublished: data.isPublished ?? false,
+        order: data.order ?? 0,
+      },
+      include: { _count: { select: { lessons: true } } },
+    });
+    await auditTx(tx, req, 'COURSE_CREATE', 'Course', { courseId: c.id, title: c.title });
+    return c;
   });
   return toListItem(course);
 }
 
 export async function updateCourse(
+  req: Request,
   courseId: number,
   data: CourseUpdateInput,
 ): Promise<CourseListItem> {
   await ensureCourse(courseId);
-  const course = await prisma.course.update({
-    where: { id: courseId },
-    data: {
-      ...(data.title !== undefined && { title: data.title }),
-      ...(data.description !== undefined && { description: data.description }),
-      ...(data.grade !== undefined && { grade: data.grade }),
-      ...(data.type !== undefined && { type: data.type }),
-      ...(data.term !== undefined && { term: data.term }),
-      ...(data.month !== undefined && { month: data.month }),
-      ...(data.price !== undefined && { price: data.price }),
-      ...(data.coverImage !== undefined && { coverImage: data.coverImage }),
-      ...(data.isPublished !== undefined && { isPublished: data.isPublished }),
-      ...(data.order !== undefined && { order: data.order }),
-    },
-    include: { _count: { select: { lessons: true } } },
+  const course = await prisma.$transaction(async (tx) => {
+    const c = await tx.course.update({
+      where: { id: courseId },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.grade !== undefined && { grade: data.grade }),
+        ...(data.type !== undefined && { type: data.type }),
+        ...(data.term !== undefined && { term: data.term }),
+        ...(data.month !== undefined && { month: data.month }),
+        ...(data.price !== undefined && { price: data.price }),
+        ...(data.coverImage !== undefined && { coverImage: data.coverImage }),
+        ...(data.isPublished !== undefined && { isPublished: data.isPublished }),
+        ...(data.order !== undefined && { order: data.order }),
+      },
+      include: { _count: { select: { lessons: true } } },
+    });
+    await auditTx(tx, req, 'COURSE_UPDATE', 'Course', { courseId });
+    return c;
   });
   return toListItem(course);
 }
 
-export async function setPublish(courseId: number, isPublished: boolean): Promise<void> {
+export async function setPublish(
+  req: Request,
+  courseId: number,
+  isPublished: boolean,
+): Promise<void> {
   await ensureCourse(courseId);
-  await prisma.course.update({ where: { id: courseId }, data: { isPublished } });
+  await prisma.$transaction(async (tx) => {
+    await tx.course.update({ where: { id: courseId }, data: { isPublished } });
+    await auditTx(tx, req, 'COURSE_PUBLISH', 'Course', { courseId, isPublished });
+  });
 }
 
 // الحذف يمتد (cascade) لواجبات الكورس وتسليماتها وحصصه اللايف: ملفاتها الخاصة وjobs تذكيرها
 // تُجمع داخل نفس المعاملة وتُزال بعد نجاح الـ commit (لا ملفات يتيمة ولا تذكير لحصة محذوفة)
-export async function deleteCourse(courseId: number): Promise<void> {
+export async function deleteCourse(req: Request, courseId: number): Promise<void> {
   await ensureCourse(courseId);
   const { fileKeys, sessions } = await prisma.$transaction(async (tx) => {
     const keys = await homeworkFileKeys(tx, { courseId });
-    const live = await tx.liveSession.findMany({ where: { courseId }, select: { id: true, startAt: true } });
+    const live = await tx.liveSession.findMany({
+      where: { courseId },
+      select: { id: true, startAt: true },
+    });
     await tx.course.delete({ where: { id: courseId } });
+    await auditTx(tx, req, 'COURSE_DELETE', 'Course', { courseId });
     return { fileKeys: keys, sessions: live };
   });
   await removeFiles(fileKeys);
@@ -168,33 +195,40 @@ export async function deleteCourse(courseId: number): Promise<void> {
 
 // ── الحصص ───────────────────────────────────────────────────────
 export async function addLesson(
+  req: Request,
   courseId: number,
   data: LessonCreateInput,
 ): Promise<AdminLessonDTO> {
   await ensureCourse(courseId);
-  if (data.videoProvider === 'YOUTUBE' && !data.youtubeVideoId) throw badRequest('أدخل رابط فيديو يوتيوب');
+  if (data.videoProvider === 'YOUTUBE' && !data.youtubeVideoId)
+    throw badRequest('أدخل رابط فيديو يوتيوب');
   if (data.videoProvider === 'BUNNY' && data.youtubeVideoId && !data.bunnyVideoId) {
     throw badRequest('ارفع فيديو Bunny أولاً');
   }
   if (data.youtubeVideoId) await assertYouTubeEmbeddable(data.youtubeVideoId);
-  const lesson = await prisma.lesson.create({
-    data: {
-      courseId,
-      title: data.title,
-      order: data.order ?? 0,
-      // رابط يوتيوب بدون تحديد المصدر → يوتيوب هو المصدر
-      videoProvider: data.videoProvider ?? (data.youtubeVideoId ? 'YOUTUBE' : 'BUNNY'),
-      bunnyVideoId: data.bunnyVideoId ?? null,
-      youtubeVideoId: data.youtubeVideoId ?? null,
-      durationSec: data.durationSec ?? 0,
-      isFreePreview: data.isFreePreview ?? false,
-    },
-    include: { attachments: { select: { id: true, type: true, url: true, title: true } } },
+  const lesson = await prisma.$transaction(async (tx) => {
+    const l = await tx.lesson.create({
+      data: {
+        courseId,
+        title: data.title,
+        order: data.order ?? 0,
+        // رابط يوتيوب بدون تحديد المصدر → يوتيوب هو المصدر
+        videoProvider: data.videoProvider ?? (data.youtubeVideoId ? 'YOUTUBE' : 'BUNNY'),
+        bunnyVideoId: data.bunnyVideoId ?? null,
+        youtubeVideoId: data.youtubeVideoId ?? null,
+        durationSec: data.durationSec ?? 0,
+        isFreePreview: data.isFreePreview ?? false,
+      },
+      include: { attachments: { select: { id: true, type: true, url: true, title: true } } },
+    });
+    await auditTx(tx, req, 'LESSON_CREATE', 'Lesson', { courseId, lessonId: l.id });
+    return l;
   });
   return toAdminLesson(lesson);
 }
 
 export async function updateLesson(
+  req: Request,
   lessonId: number,
   data: LessonUpdateInput,
 ): Promise<void> {
@@ -210,28 +244,35 @@ export async function updateLesson(
   if (data.videoProvider === 'YOUTUBE' && !youtubeId) throw badRequest('أدخل رابط فيديو يوتيوب');
   if (data.videoProvider === 'BUNNY' && !bunnyId) throw badRequest('ارفع فيديو Bunny أولاً');
 
-  await prisma.lesson.update({
-    where: { id: lessonId },
-    data: {
-      ...(data.title !== undefined && { title: data.title }),
-      ...(data.order !== undefined && { order: data.order }),
-      ...(data.videoProvider !== undefined && { videoProvider: data.videoProvider }),
-      ...(data.bunnyVideoId !== undefined && { bunnyVideoId: data.bunnyVideoId }),
-      ...(data.youtubeVideoId !== undefined && { youtubeVideoId: data.youtubeVideoId }),
-      ...(data.durationSec !== undefined && { durationSec: data.durationSec }),
-      ...(data.isFreePreview !== undefined && { isFreePreview: data.isFreePreview }),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.lesson.update({
+      where: { id: lessonId },
+      data: {
+        ...(data.title !== undefined && { title: data.title }),
+        ...(data.order !== undefined && { order: data.order }),
+        ...(data.videoProvider !== undefined && { videoProvider: data.videoProvider }),
+        ...(data.bunnyVideoId !== undefined && { bunnyVideoId: data.bunnyVideoId }),
+        ...(data.youtubeVideoId !== undefined && { youtubeVideoId: data.youtubeVideoId }),
+        ...(data.durationSec !== undefined && { durationSec: data.durationSec }),
+        ...(data.isFreePreview !== undefined && { isFreePreview: data.isFreePreview }),
+      },
+    });
+    await auditTx(tx, req, 'LESSON_UPDATE', 'Lesson', { lessonId, fields: Object.keys(data) });
   });
 }
 
-export async function deleteLesson(lessonId: number): Promise<void> {
+export async function deleteLesson(req: Request, lessonId: number): Promise<void> {
   const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
   if (!lesson) throw notFound('الحصة غير موجودة');
-  await prisma.lesson.delete({ where: { id: lessonId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.lesson.delete({ where: { id: lessonId } });
+    await auditTx(tx, req, 'LESSON_DELETE', 'Lesson', { lessonId });
+  });
 }
 
 // ── ترتيب الحصص داخل كورس (ذرّي) ────────────────────────────────
 export async function reorderLessons(
+  req: Request,
   courseId: number,
   items: { id: number; order: number }[],
 ): Promise<void> {
@@ -243,27 +284,34 @@ export async function reorderLessons(
   });
   if (owned.length !== ids.length) throw badRequest('بعض الحصص لا تنتمي لهذا الكورس');
 
-  await prisma.$transaction(
-    items.map((i) =>
-      prisma.lesson.update({ where: { id: i.id }, data: { order: i.order } }),
-    ),
-  );
-}
-
-// ── المرفقات ────────────────────────────────────────────────────
-export async function addAttachment(lessonId: number, data: AttachmentInput) {
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-  if (!lesson) throw notFound('الحصة غير موجودة');
-  return prisma.attachment.create({
-    data: { lessonId, type: data.type, url: data.url, title: data.title },
-    select: { id: true, type: true, url: true, title: true },
+  await prisma.$transaction(async (tx) => {
+    for (const i of items)
+      await tx.lesson.update({ where: { id: i.id }, data: { order: i.order } });
+    await auditTx(tx, req, 'LESSON_REORDER', 'Course', { courseId });
   });
 }
 
-export async function deleteAttachment(attachmentId: number): Promise<void> {
+// ── المرفقات ────────────────────────────────────────────────────
+export async function addAttachment(req: Request, lessonId: number, data: AttachmentInput) {
+  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
+  if (!lesson) throw notFound('الحصة غير موجودة');
+  return prisma.$transaction(async (tx) => {
+    const a = await tx.attachment.create({
+      data: { lessonId, type: data.type, url: data.url, title: data.title },
+      select: { id: true, type: true, url: true, title: true },
+    });
+    await auditTx(tx, req, 'ATTACHMENT_CREATE', 'Attachment', { lessonId, attachmentId: a.id });
+    return a;
+  });
+}
+
+export async function deleteAttachment(req: Request, attachmentId: number): Promise<void> {
   const att = await prisma.attachment.findUnique({ where: { id: attachmentId } });
   if (!att) throw notFound('المرفق غير موجود');
-  await prisma.attachment.delete({ where: { id: attachmentId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.attachment.delete({ where: { id: attachmentId } });
+    await auditTx(tx, req, 'ATTACHMENT_DELETE', 'Attachment', { attachmentId });
+  });
 }
 
 // ── أدوات مساعدة ────────────────────────────────────────────────

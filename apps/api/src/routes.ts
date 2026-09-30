@@ -18,6 +18,10 @@ import { liveRouter } from './modules/live/live.routes.js';
 import { adminLiveRouter } from './modules/live/live.admin.routes.js';
 import { notificationsRouter } from './modules/notifications/notifications.routes.js';
 import { adminNotificationsRouter } from './modules/notifications/notifications.admin.routes.js';
+import { meRouter } from './modules/dashboard/dashboard.routes.js';
+import { adminStatsRouter } from './modules/stats/stats.admin.routes.js';
+import { adminStaffRouter, adminStudentsRouter } from './modules/users/users.admin.routes.js';
+import { adminAuditRouter, adminSettingsRouter } from './modules/settings/settings.admin.routes.js';
 
 // المُجمِّع الرئيسي لكل مسارات الـ API
 export const apiRouter = Router();
@@ -33,6 +37,7 @@ apiRouter.use('/attempts', attemptsRouter);
 apiRouter.use('/homework', homeworkRouter);
 apiRouter.use('/live', liveRouter);
 apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/me', meRouter);
 apiRouter.use('/admin/bunny', bunnyAdminRouter);
 apiRouter.use('/admin/codes', codesAdminRouter);
 // الامتحانات والرفع: أدمن + مساعد، مركّبة على مسارات محددة فلا تحجب غيرها
@@ -45,6 +50,12 @@ apiRouter.use('/admin/homework', adminHomeworkRouter);
 apiRouter.use('/admin/live', adminLiveRouter);
 // الإرسال الجماعي والقوالب: أدمن فقط
 apiRouter.use('/admin/notifications', adminNotificationsRouter);
+// لوحات التحكم (Phase 8): الإحصائيات والحسابات والإعدادات وسجل العمليات — أدمن فقط
+apiRouter.use('/admin/stats', adminStatsRouter);
+apiRouter.use('/admin/students', adminStudentsRouter);
+apiRouter.use('/admin/staff', adminStaffRouter);
+apiRouter.use('/admin/settings', adminSettingsRouter);
+apiRouter.use('/admin/audit-logs', adminAuditRouter);
 // حراسة الأدمن فيه على مستوى كل مسار (لا router.use) حتى لا يحجب مسارات المحتوى عن المساعد
 apiRouter.use('/admin', financeAdminRouter);
 apiRouter.use('/admin', adminContentRouter);

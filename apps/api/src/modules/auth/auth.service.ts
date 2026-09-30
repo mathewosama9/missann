@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
 import { OtpPurpose, Role } from '@miss-ann/shared';
 import type {
@@ -18,9 +19,26 @@ import { issueOtp, consumeOtp } from '../../lib/otp.js';
 import { queueOtpMessage } from '../notifications/producers.js';
 import { setRefreshCookie, clearRefreshCookie } from '../../lib/cookies.js';
 import { badRequest, conflict, forbidden, notFound, unauthorized } from '../../lib/http.js';
-import { audit } from '../../lib/audit.js';
+import { audit, auditTx } from '../../lib/audit.js';
+import { getPlatformSettings } from '../settings/settings.service.js';
+import { forgetUserStatus, revokeSessions } from '../../lib/userStatus.js';
 
 type UserRow = Awaited<ReturnType<typeof prisma.user.findUniqueOrThrow>>;
+
+// hash ثابت لكلمة عشوائية — للتحقق الوهمي عند رقم غير مسجّل. يُحسب عند التحميل (أول طلب لا يدفع
+// تكلفة مضاعفة تكشفه)، وفشله لا يُخزَّن (يُعاد الحساب في الطلب التالي بدل 500 دائم)
+let dummy: Promise<string> | undefined;
+function dummyHash(): Promise<string> {
+  dummy ??= hashPassword(crypto.randomUUID()).catch((err: unknown) => {
+    dummy = undefined;
+    throw err;
+  });
+  return dummy;
+}
+void dummyHash().catch(() => undefined);
+
+// توكن مُدوَّر يعود بعد هذه المهلة = نسخة مسروقة (لا سباق تبويبات) ← تُنهى كل جلسات المستخدم
+const REUSE_GRACE_MS = 30_000;
 
 // كود تحقق جديد ← رسالة واتساب/SMS عبر الطابور (لا يحجب الطلب ولا يُسجَّل الكود)
 async function sendOtp(userId: number, phone: string, purpose: OtpPurpose): Promise<void> {
@@ -41,7 +59,8 @@ function toAuthUser(u: UserRow): AuthResponse['user'] {
 }
 
 // ── تسجيل طالب جديد ─────────────────────────────────────────────
-export async function register(input: RegisterInput): Promise<{ phone: string }> {
+// التحقق بالكود يحدده الأدمن من إعدادات المنصة: معطَّل ← الحساب مفعّل فوراً ولا تُرسل رسالة
+export async function register(input: RegisterInput): Promise<{ phone: string; requiresVerification: boolean }> {
   const email = input.email ? input.email.toLowerCase() : null;
   const existing = await prisma.user.findFirst({
     where: { OR: [{ phone: input.phone }, ...(email ? [{ email }] : [])] },
@@ -51,6 +70,7 @@ export async function register(input: RegisterInput): Promise<{ phone: string }>
   if (email && existing?.email === email) throw conflict('البريد الإلكتروني مسجّل بالفعل');
 
   const passwordHash = await hashPassword(input.password);
+  const { requirePhoneVerification } = await getPlatformSettings();
   const user = await prisma.user.create({
     data: {
       name: input.name,
@@ -61,20 +81,21 @@ export async function register(input: RegisterInput): Promise<{ phone: string }>
       grade: input.grade,
       governorate: input.governorate,
       role: Role.STUDENT,
-      isActive: false,
+      isActive: !requirePhoneVerification,
       wallet: { create: { balance: 0 } },
     },
   });
 
-  await sendOtp(user.id, input.phone, OtpPurpose.ACTIVATION);
-  return { phone: input.phone };
+  if (requirePhoneVerification) await sendOtp(user.id, input.phone, OtpPurpose.ACTIVATION);
+  return { phone: input.phone, requiresVerification: requirePhoneVerification };
 }
 
 // ── تفعيل الحساب عبر OTP ────────────────────────────────────────
 export async function verifyActivation(phone: string, code: string): Promise<void> {
   const ok = await consumeOtp(phone, code, OtpPurpose.ACTIVATION);
   if (!ok) throw badRequest('كود التفعيل غير صحيح أو منتهٍ');
-  await prisma.user.update({ where: { phone }, data: { isActive: true } });
+  const u = await prisma.user.update({ where: { phone }, data: { isActive: true }, select: { id: true } });
+  forgetUserStatus(u.id);
 }
 
 // ── إصدار توكنات وتسجيل توكن التحديث ────────────────────────────
@@ -99,9 +120,9 @@ export async function login(input: LoginInput, req: Request, res: Response): Pro
   const user = await prisma.user.findFirst({
     where: { OR: [{ phone: input.identifier }, { email: identifier }] },
   });
-  if (!user) throw unauthorized('بيانات الدخول غير صحيحة');
-  const passOk = await verifyPassword(user.passwordHash, input.password);
-  if (!passOk) throw unauthorized('بيانات الدخول غير صحيحة');
+  // رقم غير مسجّل يمر بنفس تكلفة argon2 ← زمن الرد لا يكشف وجود الحساب
+  const passOk = await verifyPassword(user?.passwordHash ?? (await dummyHash()), input.password);
+  if (!user || !passOk) throw unauthorized('بيانات الدخول غير صحيحة');
   if (!user.isActive) throw forbidden('الحساب غير مُفعّل، أكمل التفعيل عبر الكود');
 
   // فحص/تسجيل الجهاز ضمن الحد المسموح
@@ -110,7 +131,8 @@ export async function login(input: LoginInput, req: Request, res: Response): Pro
   });
   if (!existingDevice) {
     const count = await prisma.device.count({ where: { userId: user.id } });
-    if (count >= user.deviceLimit) {
+    // حد الأجهزة للطلاب فقط (منع مشاركة حساب مدفوع)؛ الأدمن والمساعد بلا حد (أجهزتهم تُسجَّل للمتابعة)
+    if (user.role === Role.STUDENT && count >= user.deviceLimit) {
       throw forbidden('تم الوصول للحد الأقصى للأجهزة. أزل جهازاً من حسابك للمتابعة');
     }
     await prisma.device.create({
@@ -137,20 +159,40 @@ export async function refresh(rawToken: string | undefined, res: Response): Prom
   if (!rawToken) throw unauthorized('جلسة منتهية');
   const hash = hashToken(rawToken);
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: hash }, include: { user: true } });
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
-    throw unauthorized('جلسة غير صالحة');
+  const invalid = () => {
+    clearRefreshCookie(res);
+    return unauthorized('جلسة غير صالحة');
+  };
+  // إعادة استخدام توكن مُدوَّر بعد مهلة السباق: أحد الطرفين (المستخدم أو السارق) يحمل نسخة قديمة
+  // ← إنهاء كل الجلسات فلا يبقى السارق داخلاً بالسلسلة الجديدة
+  if (stored?.rotated && stored.revokedAt && Date.now() - stored.revokedAt.getTime() > REUSE_GRACE_MS) {
+    await prisma.$transaction(async (tx) => {
+      await revokeSessions(tx, stored.userId);
+      await auditTx(tx, null, 'REFRESH_TOKEN_REUSE', 'User', { userId: stored.userId, tokenId: stored.id });
+    });
+    forgetUserStatus(stored.userId);
+    throw invalid();
+  }
+  // الحساب المعطَّل لا يجدّد جلسته (التعطيل يُبطل التوكنات أيضاً، وهذا خط دفاع ثانٍ)
+  if (!stored || stored.revokedAt || stored.expiresAt < new Date() || !stored.user.isActive) {
+    throw invalid();
   }
 
   // إبطال القديم وإصدار جديد (rotation) بنفس اختيار "تذكّرني" — المُتذكَّرة تمتد 30 يوماً مع كل تجديد،
   // وغير المُتذكَّرة تحتفظ بانتهائها الأصلي (لا تمديد)
   const { token, hash: newHash } = generateRefreshToken();
   const expiresAt = stored.remember ? refreshExpiry() : stored.expiresAt;
-  await prisma.$transaction([
-    prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } }),
-    prisma.refreshToken.create({
+  // الإبطال مشروط (revokedAt=null): تجديدان متزامنان بنفس التوكن ← واحد فقط يصدر توكناً جديداً
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.refreshToken.updateMany({
+      where: { id: stored.id, revokedAt: null },
+      data: { revokedAt: new Date(), rotated: true },
+    });
+    if (count === 0) throw invalid();
+    await tx.refreshToken.create({
       data: { userId: stored.userId, tokenHash: newHash, expiresAt, remember: stored.remember },
-    }),
-  ]);
+    });
+  });
   setRefreshCookie(res, token, stored.remember);
 
   const accessToken = signAccessToken({
@@ -183,12 +225,13 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
   const ok = await consumeOtp(input.phone, input.code, OtpPurpose.RESET);
   if (!ok) throw badRequest('كود الاستعادة غير صحيح أو منتهٍ');
   const passwordHash = await hashPassword(input.newPassword);
-  const user = await prisma.user.update({ where: { phone: input.phone }, data: { passwordHash } });
-  // إبطال كل الجلسات القديمة
-  await prisma.refreshToken.updateMany({
-    where: { userId: user.id, revokedAt: null },
-    data: { revokedAt: new Date() },
+  // إنهاء كل الجلسات القديمة (التحديث والوصول)
+  const userId = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.update({ where: { phone: input.phone }, data: { passwordHash }, select: { id: true } });
+    await revokeSessions(tx, user.id);
+    return user.id;
   });
+  forgetUserStatus(userId);
 }
 
 // ── بيانات المستخدم الحالي ──────────────────────────────────────
@@ -207,10 +250,14 @@ export async function listDevices(userId: number) {
   });
 }
 
-export async function removeDevice(userId: number, deviceId: number): Promise<void> {
-  const device = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (!device || device.userId !== userId) throw notFound('الجهاز غير موجود');
-  await prisma.device.delete({ where: { id: deviceId } });
+// الجلسات غير مربوطة بالأجهزة ← إزالة جهاز تُنهي كل الجلسات الأخرى (الجهاز المسروق يخرج)، وتبقى الحالية
+export async function removeDevice(userId: number, deviceId: number, currentRawToken?: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.device.deleteMany({ where: { id: deviceId, userId } });
+    if (count === 0) throw notFound('الجهاز غير موجود');
+    await revokeSessions(tx, userId, { keepTokenHash: currentRawToken ? hashToken(currentRawToken) : undefined });
+  });
+  forgetUserStatus(userId);
 }
 
 // ── تغيير كلمة المرور (من داخل الحساب) ─────────────────────────
@@ -218,11 +265,17 @@ export async function changePassword(
   userId: number,
   currentPassword: string,
   newPassword: string,
+  currentRawToken?: string,
 ): Promise<void> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw notFound('المستخدم غير موجود');
   const ok = await verifyPassword(user.passwordHash, currentPassword);
   if (!ok) throw badRequest('كلمة المرور الحالية غير صحيحة');
   const passwordHash = await hashPassword(newPassword);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  // كلمة مرور جديدة ← خروج كل الأجهزة الأخرى (الحالية تبقى وتجدّد توكن الوصول تلقائياً)
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await revokeSessions(tx, userId, { keepTokenHash: currentRawToken ? hashToken(currentRawToken) : undefined });
+  });
+  forgetUserStatus(userId);
 }

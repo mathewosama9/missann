@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dbId, DB_ID_MAX } from './common.js';
+import { dbId, DB_ID_MAX, pageNumber } from './common.js';
 import { HOMEWORK_MAX_GRADE_DEFAULT } from '../constants.js';
 
 // ── أدمن: إنشاء/تعديل واجب (المرفق يُرفع منفصلاً كملف multipart) ─────
@@ -32,7 +32,7 @@ export type HomeworkTab = (typeof HomeworkTab)[keyof typeof HomeworkTab];
 
 export const homeworkListFilterSchema = z.object({
   tab: z.nativeEnum(HomeworkTab).default('REQUIRED'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(50).default(12),
 });
 export type HomeworkListFilter = z.infer<typeof homeworkListFilterSchema>;
@@ -40,14 +40,14 @@ export type HomeworkListFilter = z.infer<typeof homeworkListFilterSchema>;
 export const adminHomeworkFilterSchema = z.object({
   courseId: z.coerce.number().int().positive().max(DB_ID_MAX).optional(),
   q: z.string().trim().max(100).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type AdminHomeworkFilter = z.infer<typeof adminHomeworkFilterSchema>;
 
 export const adminSubmissionsFilterSchema = z.object({
   status: z.enum(['PENDING', 'GRADED']).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type AdminSubmissionsFilter = z.infer<typeof adminSubmissionsFilterSchema>;

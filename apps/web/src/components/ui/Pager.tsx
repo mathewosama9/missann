@@ -1,4 +1,13 @@
+import { useEffect } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
+
+// الصفحة الحالية تجاوزت آخر صفحة (حُذف/تغيّر آخر عنصر ثم رجع للقائمة) ← انتقل لآخر صفحة موجودة
+// بدل "لا نتائج" بلا ترقيم يُخرج منها
+export function useClampPage(page: number, totalPages: number | undefined, setPage: (p: number) => void): void {
+  useEffect(() => {
+    if (totalPages && page > totalPages) setPage(totalPages);
+  }, [page, totalPages, setPage]);
+}
 
 // ترقيم صفحات بسيط للجداول
 export function Pager({

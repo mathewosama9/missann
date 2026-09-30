@@ -349,8 +349,13 @@ describe('OTP', () => {
     expect(n!.body).not.toMatch(/\d{6}/);
     const sent = calls.find((c) => c.to === `20${st.s2.phone.slice(1)}` && /\d{6}/.test(c.text))!;
     const code = sent.text.match(/\d{6}/)![0];
+    // توكن صادر قبل دقيقة (أقدم من الاستعادة بثوانٍ كاملة مهما كانت سرعة الاختبار)
+    st.s2.token = sign({ sub: st.s2.id, role: 'STUDENT', name: st.s2.name, iat: Math.floor(Date.now() / 1000) - 60 } as never);
     const reset = await request(app).post('/api/auth/reset-password').send({ phone: st.s2.phone, code, newPassword: 'NewPass@123' });
     expect(reset.status).toBe(200);
+    // الاستعادة تُنهي كل الجلسات (توكن الوصول القديم مرفوض) ← دخول جديد لبقية الملف
+    expect((await request(app).get('/api/notifications/unread-count').set(auth(st.s2.token))).status).toBe(401);
+    st.s2.token = sign({ sub: st.s2.id, role: 'STUDENT', name: st.s2.name, iat: Math.floor(Date.now() / 1000) + 1 } as never);
     // الـ job (وبياناته بالكود) لا يبقى في Redis
     expect(await q.getQueue('messages').getJob(outbox.messageJobId(n!.id))).toBeFalsy();
   });
@@ -395,6 +400,30 @@ describe('OTP', () => {
     await delivery.deliverMessageJob(fakeJob(second.id, 0, 3, '482913'));
     expect(calls.at(-1)!.text).toBe('كودك: 482913');
     expect((await row(second.id)).body).toBe('كودك: ••••••');
+  });
+});
+
+// ── الكنّاس: حجز يتيم لعامل انقطع (مثلاً job تجاوز حد التعطّل في BullMQ) ──
+describe('sweeper', () => {
+  it('حجز منتهٍ و job غير حي ← FAILED بلا إعادة إرسال؛ و job حي (مؤجّل) ← يبقى PENDING لعامله', async () => {
+    const past = new Date(Date.now() - 60_000);
+    const dead = await outbound(st.s1.id, { lockedUntil: past, attempts: 1 });
+    const live = await outbound(st.s1.id, { lockedUntil: past, attempts: 1 });
+    const messages = q.getQueue('messages');
+    await messages.add(q.JOBS.deliverMessage, { id: live.id }, { jobId: outbox.messageJobId(live.id), delay: 60_000 });
+    try {
+      const r = await outbox.flushNotificationOutbox();
+      expect(r.orphaned).toBeGreaterThanOrEqual(1);
+      const d = await row(dead.id);
+      expect(d).toMatchObject({ status: 'FAILED', lockedUntil: null, attempts: 1 });
+      expect(d.lastError).toContain('انقطع العامل');
+      expect((await row(live.id)).status).toBe('PENDING');
+      // الكنّاس لا يرسل الرسالة اليتيمة (لا تكرار محتمل)
+      await new Promise((res) => setTimeout(res, 300));
+      expect(calls.filter((c) => c.text === dead.body || c.text === live.body)).toHaveLength(0);
+    } finally {
+      await (await messages.getJob(outbox.messageJobId(live.id)))?.remove();
+    }
   });
 });
 

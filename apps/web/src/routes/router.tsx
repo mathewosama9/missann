@@ -1,7 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { RootBoot } from '../components/layout/RootBoot';
 import { PublicLayout } from '../components/layout/PublicLayout';
-import { ProtectedRoute, AdminRoute } from './guards';
+import { ProtectedRoute, AdminRoute, AdminOnly } from './guards';
 
 import { Home } from '../pages/Home';
 import { Courses } from '../pages/Courses';
@@ -21,7 +21,7 @@ import { NotFound } from '../pages/NotFound';
 import { StudentLayout } from '../pages/dashboard/StudentLayout';
 import { StudentOverview } from '../pages/dashboard/Overview';
 import { Profile } from '../pages/dashboard/Profile';
-import { DashPlaceholder } from '../pages/dashboard/Placeholder';
+import { MyCourses } from '../pages/dashboard/MyCourses';
 import { WalletPage } from '../pages/dashboard/Wallet';
 import { ExamsPage } from '../pages/dashboard/Exams';
 import { ExamResult } from '../pages/dashboard/ExamResult';
@@ -43,6 +43,9 @@ import { AdminHomework } from '../pages/admin/AdminHomework';
 import { AdminHomeworkSubmissions } from '../pages/admin/AdminHomeworkSubmissions';
 import { AdminLive } from '../pages/admin/AdminLive';
 import { AdminNotifications } from '../pages/admin/AdminNotifications';
+import { AdminStudents } from '../pages/admin/AdminStudents';
+import { AdminStudentDetail } from '../pages/admin/AdminStudentDetail';
+import { AdminSettings } from '../pages/admin/AdminSettings';
 
 export const router = createBrowserRouter([
   {
@@ -104,7 +107,7 @@ export const router = createBrowserRouter([
         ),
         children: [
           { index: true, element: <StudentOverview /> },
-          { path: 'courses', element: <DashPlaceholder title="كورساتي" /> },
+          { path: 'courses', element: <MyCourses /> },
           { path: 'wallet', element: <WalletPage /> },
           { path: 'exams', element: <ExamsPage /> },
           { path: 'exams/result/:attemptId', element: <ExamResult /> },
@@ -125,11 +128,13 @@ export const router = createBrowserRouter([
         ),
         children: [
           { index: true, element: <AdminOverview /> },
-          { path: 'students', element: <DashPlaceholder title="الطلاب" /> },
+          // أقسام الأدمن فقط (الـ API يرفض المساعد أيضاً)
+          { path: 'students', element: <AdminOnly><AdminStudents /></AdminOnly> },
+          { path: 'students/:id', element: <AdminOnly><AdminStudentDetail /></AdminOnly> },
           { path: 'courses', element: <AdminCourses /> },
           { path: 'courses/:id', element: <AdminCourseLessons /> },
-          { path: 'codes', element: <AdminCodes /> },
-          { path: 'payments', element: <AdminPayments /> },
+          { path: 'codes', element: <AdminOnly><AdminCodes /></AdminOnly> },
+          { path: 'payments', element: <AdminOnly><AdminPayments /></AdminOnly> },
           { path: 'exams', element: <AdminExams /> },
           { path: 'exams/:id', element: <AdminExamBuilder /> },
           { path: 'exams/:id/analytics', element: <AdminExamAnalytics /> },
@@ -138,7 +143,7 @@ export const router = createBrowserRouter([
           { path: 'homework/:id', element: <AdminHomeworkSubmissions /> },
           { path: 'live', element: <AdminLive /> },
           { path: 'notifications', element: <AdminNotifications /> },
-          { path: 'settings', element: <DashPlaceholder title="الإعدادات" /> },
+          { path: 'settings', element: <AdminOnly><AdminSettings /></AdminOnly> },
         ],
       },
     ],

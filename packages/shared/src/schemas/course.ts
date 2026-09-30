@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dbId } from './common.js';
+import { dbId, pageNumber } from './common.js';
 import { Grade, CourseType, Term, AttachmentType, VideoProvider } from '../enums.js';
 import { parseYouTubeId, YOUTUBE_ID_RE } from '../youtube.js';
 
@@ -23,7 +23,7 @@ export const courseFilterSchema = z.object({
   type: z.nativeEnum(CourseType).optional(),
   term: z.nativeEnum(Term).optional(),
   q: z.string().max(80).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(12),
 });
 export type CourseFilter = z.infer<typeof courseFilterSchema>;
@@ -97,7 +97,7 @@ export const adminCourseFilterSchema = z.object({
   term: z.nativeEnum(Term).optional(),
   isPublished: queryBoolean.optional(),
   q: z.string().max(80).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type AdminCourseFilter = z.infer<typeof adminCourseFilterSchema>;

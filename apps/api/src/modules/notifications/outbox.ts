@@ -1,7 +1,7 @@
 import type { NotifType, Prisma } from '@prisma/client';
 import { egyptianPhone, renderTemplate } from '@miss-ann/shared';
 import { prisma } from '../../lib/prisma.js';
-import { enqueue, enqueueBulk, JOBS } from '../../lib/queue.js';
+import { enqueue, enqueueBulk, jobStates, JOBS } from '../../lib/queue.js';
 import { OTP_TTL_MIN } from '../../lib/otp.js';
 import type { TemplateText } from './templates.js';
 
@@ -89,10 +89,39 @@ export const unlocked = (now: Date): Prisma.NotificationWhereInput => ({
   OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
 });
 
-// كنّاس دوري: رسائل لم تصل للطابور (Redis كان متوقفاً)، بث لم يكتمل توزيعه، وأكواد تحقق انتهت قبل الإرسال
-export async function flushNotificationOutbox(limit = 500): Promise<{ messages: number; broadcasts: number; expiredOtp: number }> {
+// job ما زال سيُنفَّذ (العامل سيحجز الرسالة بنفسه)
+const LIVE_JOB_STATES = new Set(['waiting', 'delayed', 'active', 'prioritized', 'waiting-children']);
+
+// حجز منتهٍ لم تُحدَّث بعده الحالة = عامل انقطع أثناء الإرسال (أو بعده قبل الكتابة) ← لا نعرف هل وصلت.
+// لو job التسليم لم يعد حياً (فشل بتجاوز حد التعطّل، اكتمل، أو حُذف) فإعادة الدفع لا تفعل شيئاً والصف يبقى
+// PENDING للأبد ← FAILED بلا إعادة إرسال (لا تكرار؛ تظهر في سجل الرسائل). job حي ← يُترك لعامله.
+async function failOrphanedClaims(now: Date, limit: number): Promise<number> {
+  const stuck = await prisma.notification.findMany({
+    where: { status: 'PENDING', channel: { not: 'IN_APP' }, lockedUntil: { lt: now } },
+    orderBy: { id: 'asc' },
+    take: limit,
+    select: { id: true },
+  });
+  if (stuck.length === 0) return 0;
+  const states = await jobStates('messages', stuck.map((s) => messageJobId(s.id)));
+  if (!states) return 0; // Redis غير متاح: لا نحكم على job لا نعرف حالته
+  const dead = stuck.filter((_, i) => !LIVE_JOB_STATES.has(states[i]!)).map((s) => s.id);
+  if (dead.length === 0) return 0;
+  const { count } = await prisma.notification.updateMany({
+    where: { id: { in: dead }, status: 'PENDING', lockedUntil: { lt: now } },
+    data: { status: 'FAILED', lockedUntil: null, lastError: 'انقطع العامل أثناء الإرسال — لم يُعَد الإرسال تجنّباً للتكرار' },
+  });
+  return count;
+}
+
+// كنّاس دوري: رسائل لم تصل للطابور (Redis كان متوقفاً)، بث لم يكتمل توزيعه، أكواد تحقق انتهت قبل الإرسال،
+// وحجوزات يتيمة لعامل انقطع
+export async function flushNotificationOutbox(
+  limit = 500,
+): Promise<{ messages: number; broadcasts: number; expiredOtp: number; orphaned: number }> {
   const now = new Date();
   const outbound = { status: 'PENDING', channel: { not: 'IN_APP' } } as const;
+  const orphaned = await failOrphanedClaims(now, limit);
   // كود التحقق لا يُعاد دفعه (غير مخزَّن) — يُغلق بعد انتهاء صلاحيته
   const { count: expiredOtp } = await prisma.notification.updateMany({
     where: { ...outbound, type: 'OTP', createdAt: { lt: new Date(now.getTime() - OTP_TTL_MIN * 60_000) }, ...unlocked(now) },
@@ -112,5 +141,5 @@ export async function flushNotificationOutbox(limit = 500): Promise<{ messages: 
     select: { id: true },
   });
   for (const b of broadcasts) await queueBroadcast(b.id);
-  return { messages: pending.length, broadcasts: broadcasts.length, expiredOtp };
+  return { messages: pending.length, broadcasts: broadcasts.length, expiredOtp, orphaned };
 }

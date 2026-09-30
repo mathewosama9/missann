@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CodeStatus, PaymentStatus, PaymentPurpose } from '../enums.js';
-import { egyptianPhone } from './common.js';
+import { egyptianPhone, pageNumber } from './common.js';
 import { normalizeRedeemCode, REDEEM_CODE_LENGTH, TOPUP_LIMITS } from '../constants.js';
 
 // الطالب قد يكتب الكود بشرطات أو مسافات أو أحرف صغيرة
@@ -31,7 +31,7 @@ export const paymobInitSchema = z
 export type PaymobInitInput = z.infer<typeof paymobInitSchema>;
 
 const page = {
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 };
 

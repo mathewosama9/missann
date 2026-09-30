@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AttemptStatus, Grade, QuestionType, ResultRelease } from '../enums.js';
 import { ANSWER_TEXT_MAX, isManualQuestion } from '../constants.js';
-import { dbId } from './common.js';
+import { dbId, pageNumber } from './common.js';
 
 // صورة السؤال: رابط https خارجي، أو ملف مرفوع عندنا (اسم عشوائي webp)
 export const QUESTION_IMAGE_PATH = /^\/api\/uploads\/[a-f0-9]{32}\.webp$/;
@@ -101,7 +101,7 @@ export const adminExamFilterSchema = z.object({
   grade: z.nativeEnum(Grade).optional(),
   courseId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
   q: z.string().trim().max(100).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 export type AdminExamFilter = z.infer<typeof adminExamFilterSchema>;
@@ -110,7 +110,7 @@ export const adminAttemptsFilterSchema = z.object({
   status: z.nativeEnum(AttemptStatus).optional(),
   // PENDING: سلّم وينتظر تصحيح المس للأسئلة الكتابية
   grading: z.enum(['PENDING', 'GRADED']).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: pageNumber,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type AdminAttemptsFilter = z.infer<typeof adminAttemptsFilterSchema>;

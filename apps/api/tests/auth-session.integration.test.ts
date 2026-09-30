@@ -84,6 +84,41 @@ describe('remember me', () => {
   });
 });
 
+describe('refresh hardening', () => {
+  it('تجديدان متزامنان بنفس التوكن ← واحد فقط ينجح ويصدر توكناً جديداً واحداً', async () => {
+    const c = cookiePair(refreshCookie(await login('gate-session-a', true)));
+    const before = await prisma.refreshToken.count({ where: { userId } });
+    const [a, b] = await Promise.all([
+      request(app).post('/api/auth/refresh').set('Cookie', c),
+      request(app).post('/api/auth/refresh').set('Cookie', c),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 401]);
+    expect(await prisma.refreshToken.count({ where: { userId } })).toBe(before + 1);
+
+    // الحساب المعطَّل لا يجدّد حتى بتوكن سليم غير مُبطَل
+    const fresh = cookiePair(refreshCookie(a.status === 200 ? a : b));
+    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+    try {
+      expect((await request(app).post('/api/auth/refresh').set('Cookie', fresh)).status).toBe(401);
+    } finally {
+      await prisma.user.update({ where: { id: userId }, data: { isActive: true } });
+    }
+  });
+
+  it('رقم غير مسجّل يمر بتكلفة argon2 نفسها (لا تعداد بالتوقيت) ونفس الرد', async () => {
+    const t0 = performance.now();
+    const wrong = await request(app).post('/api/auth/login').send({ identifier: PHONE, password: 'Wrong@1234', deviceFingerprint: 'gate-session-a' });
+    const wrongMs = performance.now() - t0;
+    const t1 = performance.now();
+    const unknown = await request(app).post('/api/auth/login').send({ identifier: '01555990000', password: 'Wrong@1234', deviceFingerprint: 'gate-session-a' });
+    const unknownMs = performance.now() - t1;
+    expect(wrong.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(unknown.body.message).toBe(wrong.body.message);
+    expect(unknownMs).toBeGreaterThan(wrongMs * 0.5);
+  });
+});
+
 describe('device limit', () => {
   it('نفس البصمة لا تستهلك جهازاً جديداً؛ الجهاز الثالث يُرفض 403', async () => {
     // gate-session-a مسجّل من الاختبارات السابقة (3 دخولات) ← جهاز واحد فقط

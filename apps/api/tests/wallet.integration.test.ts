@@ -31,7 +31,7 @@ const balanceOf = async (userId: number) =>
 async function cleanup() {
   const users = await prisma.user.findMany({ where: { phone: { startsWith: PHONE_PREFIX } }, select: { id: true } });
   const ids = users.map((u) => u.id);
-  await prisma.codeBatch.deleteMany({ where: { OR: [{ createdBy: { in: ids } }, { label: { startsWith: 'TEST-' } }] } });
+  await prisma.codeBatch.deleteMany({ where: { OR: [{ createdBy: { in: ids } }, { label: { startsWith: 'TEST-batch' } }] } });
   await prisma.course.deleteMany({ where: { title: { startsWith: 'TEST-P4' } } });
   const payments = await prisma.payment.findMany({ where: { userId: { in: ids } }, select: { id: true } });
   await prisma.auditLog.deleteMany({
