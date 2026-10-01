@@ -10,7 +10,9 @@ const schema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16),
   ACCESS_TTL_MIN: z.coerce.number().default(15),
   REFRESH_TTL_DAYS: z.coerce.number().default(30),
-  APP_URL: z.string().default('http://localhost:5173'),
+  APP_URL: z.string().url().default('http://localhost:5173'),
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
+  RATE_LIMIT_PER_MIN: z.coerce.number().int().min(30).max(100_000).default(300),
   COOKIE_DOMAIN: z.string().optional(),
   // Bunny
   BUNNY_STREAM_LIBRARY_ID: z.string().default(''),
@@ -47,7 +49,23 @@ const schema = z.object({
   MESSAGES_PER_SEC: z.coerce.number().int().min(1).max(200).default(20),
 });
 
-const parsed = schema.safeParse(process.env);
+// الإنتاج: أسرار JWT قوية ومختلفة (لا قيم المثال)، والموقع عبر HTTPS (كوكي التحديث Secure)
+const prodSchema = schema.superRefine((e, ctx) => {
+  if (e.NODE_ENV !== 'production') return;
+  for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+    if (e[k].length < 32 || /change_me/i.test(e[k])) {
+      ctx.addIssue({ code: 'custom', path: [k], message: '32 حرفاً عشوائياً على الأقل (openssl rand -hex 32)' });
+    }
+  }
+  if (e.JWT_ACCESS_SECRET === e.JWT_REFRESH_SECRET) {
+    ctx.addIssue({ code: 'custom', path: ['JWT_REFRESH_SECRET'], message: 'يجب أن يختلف عن JWT_ACCESS_SECRET' });
+  }
+  if (!e.APP_URL.startsWith('https://')) {
+    ctx.addIssue({ code: 'custom', path: ['APP_URL'], message: 'في الإنتاج يجب أن يبدأ بـ https://' });
+  }
+});
+
+const parsed = prodSchema.safeParse(process.env);
 if (!parsed.success) {
   console.error('❌ متغيرات البيئة غير صحيحة:', parsed.error.flatten().fieldErrors);
   throw new Error('Invalid environment variables');

@@ -10,9 +10,24 @@ import { prisma } from '../../lib/prisma.js';
 import { notFound, unauthorized, paginate } from '../../lib/http.js';
 import { isStaff, activeVideo } from '../lessons/lessons.service.js';
 import { isEnrolled, findActiveEnrollment, assertEnrollment } from './enrollment.service.js';
+import { bumpCacheGeneration, cacheGeneration, cached } from '../../lib/cache.js';
+
+// ── كاش الكتالوج العام (Redis، 60 ثانية) ─────────────────────────
+// كل كتابة أدمن على الكورسات/الحصص/المرفقات ترفع الإصدار ← النشر/التعديل يظهر فوراً بلا انتظار المهلة
+const CATALOG = 'catalog';
+const CATALOG_TTL_SEC = 60;
+export const bumpCatalog = (): Promise<unknown> => bumpCacheGeneration(CATALOG);
 
 // ── كتالوج عام: الكورسات المنشورة فقط مع فلترة + ترقيم ──────────
+// البحث النصي (q) لا يُخزَّن: مفاتيح كثيرة نادرة التكرار
 export async function listCourses(filter: CourseFilter) {
+  if (filter.q) return queryCourses(filter);
+  const gen = await cacheGeneration(CATALOG);
+  const key = `${CATALOG}:${gen}:list:${filter.grade ?? ''}:${filter.type ?? ''}:${filter.term ?? ''}:${filter.page}:${filter.pageSize}`;
+  return cached(key, CATALOG_TTL_SEC, () => queryCourses(filter));
+}
+
+async function queryCourses(filter: CourseFilter) {
   const where: Prisma.CourseWhereInput = {
     isPublished: true,
     ...(filter.grade && { grade: filter.grade }),
@@ -64,26 +79,14 @@ export async function getCourseDetail(
   courseId: number,
   userId?: number,
 ): Promise<CourseDetailDTO> {
-  const course = await prisma.course.findFirst({
-    where: { id: courseId, isPublished: true },
-    include: {
-      lessons: {
-        orderBy: { order: 'asc' },
-        select: {
-          id: true,
-          title: true,
-          order: true,
-          durationSec: true,
-          isFreePreview: true,
-          _count: { select: { attachments: true } },
-        },
-      },
-      _count: { select: { lessons: true } },
-    },
-  });
+  // الجزء العام (الكورس وحصصه) من الكاش؛ حالة اشتراك المستخدم تُحسب لكل طلب
+  const gen = await cacheGeneration(CATALOG);
+  const published = await cached(`${CATALOG}:${gen}:course:${courseId}`, CATALOG_TTL_SEC, () => loadCourse(courseId, true));
+  const enrollment = userId ? await findActiveEnrollment(userId, courseId) : null;
+  // كورس مخفي: يظهر لمشتركه الساري فقط (يكمل ما دفع فيه)، ولغيره 404
+  const course = published ?? (enrollment ? await loadCourse(courseId, false) : null);
   if (!course) throw notFound('الكورس غير موجود');
 
-  const enrollment = userId ? await findActiveEnrollment(userId, courseId) : null;
   const enrolled = enrollment !== null;
 
   return {
@@ -113,6 +116,38 @@ export async function getCourseDetail(
   };
 }
 
+// حقول مختارة (نصوص/أرقام فقط) ← تسلسل JSON في الكاش يعيدها كما هي
+function loadCourse(courseId: number, publishedOnly: boolean) {
+  return prisma.course.findFirst({
+    where: { id: courseId, ...(publishedOnly && { isPublished: true }) },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      grade: true,
+      type: true,
+      term: true,
+      month: true,
+      price: true,
+      coverImage: true,
+      order: true,
+      isPublished: true,
+      lessons: {
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          title: true,
+          order: true,
+          durationSec: true,
+          isFreePreview: true,
+          _count: { select: { attachments: true } },
+        },
+      },
+      _count: { select: { lessons: true } },
+    },
+  });
+}
+
 // ── مرجع حصة قابلة للوصول (معاينة مجانية أو مشترك ساري أو طاقم) ──
 // لا يُرجع معرّف الفيديو الخام؛ التشغيل عبر رابط موقّع من /lessons/:id/play
 export async function getAccessibleLesson(
@@ -122,12 +157,17 @@ export async function getAccessibleLesson(
 ): Promise<LessonPlaybackDTO> {
   const staff = user ? isStaff(user.role) : false;
   const lesson = await prisma.lesson.findFirst({
-    where: { id: lessonId, courseId, ...(!staff && { course: { isPublished: true } }) },
+    where: { id: lessonId, courseId },
     include: {
       attachments: { select: { id: true, type: true, url: true, title: true } },
+      course: { select: { isPublished: true } },
     },
   });
   if (!lesson) throw notFound('الحصة غير موجودة');
+  // كورس مخفي: لمشتركه الساري فقط (حتى المعاينة المجانية لا تظهر لغيره)
+  if (!staff && !lesson.course.isPublished && !(user && (await isEnrolled(user.sub, courseId)))) {
+    throw notFound('الحصة غير موجودة');
+  }
 
   // المعاينة المجانية متاحة للجميع؛ غير ذلك يتطلب اشتراكاً سارياً
   if (!lesson.isFreePreview && !staff) {

@@ -42,3 +42,17 @@ export async function cached<T>(key: string, ttlSec: number, compute: () => Prom
 export function invalidateCache(key: string): Promise<unknown> {
   return within(() => redis.del(key));
 }
+
+// ── مفاتيح بإصدار لمجموعة بيانات (مثل الكتالوج): الكتابة ترفع الإصدار فتُهمل كل مفاتيح المجموعة
+// دفعة واحدة (القديمة تنتهي بمهلتها) — بلا بحث/حذف مفاتيح. Redis متوقف ← "0" والحساب مباشرة
+export async function cacheGeneration(ns: string): Promise<string> {
+  const v = await within(async () => {
+    await ensureRedis();
+    return redis.get(`${ns}:gen`);
+  });
+  return v ?? '0';
+}
+
+export function bumpCacheGeneration(ns: string): Promise<unknown> {
+  return within(() => redis.incr(`${ns}:gen`));
+}

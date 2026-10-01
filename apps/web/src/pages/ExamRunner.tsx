@@ -216,7 +216,8 @@ function Runner({ session }: { session: AttemptSessionDTO }) {
       qc.setQueryData(['exam-result', r.attemptId], r);
       void qc.invalidateQueries({ queryKey: ['exams'] });
       void qc.invalidateQueries({ queryKey: ['me'] }); // لوحة الطالب: الرصيد/الاشتراكات/المطلوب
-      qc.removeQueries({ queryKey: ['exam-session', session.examId] });
+      // جلسة الامتحان تُحذف وحدها عند مغادرة الصفحة (gcTime: 0). حذفها هنا والمشغّل ما زال معروضاً
+      // (صفحة النتيجة تُحمَّل كسولاً) كان يعيد جلبها ← طلب start زائد (409) بعد التسليم
       toast.success(r.status === 'EXPIRED' ? 'انتهى الوقت وتم تسليم إجاباتك' : 'تم تسليم الامتحان');
       navigate(`/dashboard/exams/result/${r.attemptId}`, { replace: true });
     },

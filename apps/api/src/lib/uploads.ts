@@ -91,6 +91,7 @@ export function safeDisplayName(original: string, ext: StoredExt): string {
   const base = path
     .basename(original || '')
     .replace(/\.[^.]*$/, '')
+    // eslint-disable-next-line no-control-regex -- إزالة محارف التحكم من اسم الملف عمداً
     .replace(/[\u0000-\u001f\u007f"\\/:*?<>|]+/g, '')
     .trim()
     .slice(0, 80);

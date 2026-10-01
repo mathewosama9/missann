@@ -3,6 +3,7 @@ import type { BunnyCreateVideoInput, BunnyUploadDTO } from '@miss-ann/shared';
 import { prisma } from '../../lib/prisma.js';
 import { notFound } from '../../lib/http.js';
 import { audit } from '../../lib/audit.js';
+import { bumpCatalog } from '../courses/courses.service.js';
 import { createBunnyVideo, getBunnyVideo, signTusUpload, TUS_ENDPOINT } from '../../lib/bunny.js';
 
 // ينشئ عنصر فيديو في المكتبة ويرجّع توقيع رفع TUS مؤقت.
@@ -49,6 +50,7 @@ export async function videoStatusHandler(req: Request, res: Response): Promise<v
   if (ready && info.lengthSec > 0 && info.lengthSec !== lesson.durationSec) {
     durationSec = info.lengthSec;
     await prisma.lesson.update({ where: { id: lessonId }, data: { durationSec } });
+    await bumpCatalog(); // مدة الحصة تظهر في صفحة الكورس العامة
   }
   res.json({ status: info.status, encodeProgress: info.encodeProgress, ready, durationSec });
 }

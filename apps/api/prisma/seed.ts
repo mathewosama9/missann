@@ -1,28 +1,51 @@
-import { PrismaClient } from '@prisma/client';
+import type { Request } from 'express';
 import { hashPassword } from '../src/lib/password.js';
+import { prisma } from '../src/lib/prisma.js';
+import { createBatch } from '../src/modules/codes/codes.admin.service.js';
 
-const prisma = new PrismaClient();
+const isProd = process.env.NODE_ENV === 'production';
+const DEFAULT_ADMIN_PASSWORD = 'Admin@12345';
+const DEMO_BATCH_LABEL = 'دفعة تجريبية (seed)';
 
-// بيانات تجريبية للتطوير — أدمن + كورسات وحصص لكل صف
+// الإنتاج: كلمة مرور الأدمن الأول من متغيرات البيئة (لا الافتراضية) — مطلوبة فقط عند إنشائه أول مرة،
+// والبيانات التجريبية فقط مع SEED_DEMO=true
+function adminPassword(): string {
+  const password = process.env.SEED_ADMIN_PASSWORD ?? DEFAULT_ADMIN_PASSWORD;
+  if (isProd && (password === DEFAULT_ADMIN_PASSWORD || password.length < 10)) {
+    throw new Error('في الإنتاج اضبط SEED_ADMIN_PASSWORD (10 أحرف على الأقل، غير الافتراضية)');
+  }
+  return password;
+}
+
+// أدمن + (في التطوير أو مع SEED_DEMO=true) طالب وكورسات وحصص ودفعة أكواد تجريبية — آمن للتكرار
 async function main(): Promise<void> {
-  // ── أدمن افتراضي ──────────────────────────────────────────────
-  const adminPhone = '01000000000';
-  const admin = await prisma.user.upsert({
-    where: { phone: adminPhone },
-    update: {},
-    create: {
-      name: 'مس آن بهاء',
-      phone: adminPhone,
-      parentPhone: adminPhone,
-      email: 'admin@missann.local',
-      passwordHash: await hashPassword('Admin@12345'),
-      role: 'ADMIN',
-      isActive: true,
-      governorate: 'القاهرة',
-      wallet: { create: { balance: 0 } },
-    },
-  });
-  console.log(`✔ أدمن: ${admin.phone} / كلمة المرور: Admin@12345`);
+  // ── الأدمن (موجود ← لا يُلمس ولا تُطلب كلمة مرور) ─────────────
+  const phone = process.env.SEED_ADMIN_PHONE ?? '01000000000';
+  let admin = await prisma.user.findUnique({ where: { phone } });
+  if (admin) {
+    console.log(`• موجود: أدمن ${admin.phone}`);
+  } else {
+    const password = adminPassword();
+    admin = await prisma.user.create({
+      data: {
+        name: 'مس آن بهاء',
+        phone,
+        parentPhone: phone,
+        email: process.env.SEED_ADMIN_EMAIL ?? (isProd ? null : 'admin@missann.local'),
+        passwordHash: await hashPassword(password),
+        role: 'ADMIN',
+        isActive: true,
+        governorate: 'القاهرة',
+        wallet: { create: { balance: 0 } },
+      },
+    });
+    console.log(`✔ أدمن: ${admin.phone}${isProd ? '' : ` / كلمة المرور: ${password}`}`);
+  }
+
+  if (isProd && process.env.SEED_DEMO !== 'true') {
+    console.log('\n✅ اكتمل الـ seed (الإنتاج: أدمن فقط — SEED_DEMO=true لإضافة البيانات التجريبية)');
+    return;
+  }
 
   // ── طالب تجريبي ───────────────────────────────────────────────
   const studentPhone = '01111111111';
@@ -111,6 +134,17 @@ async function main(): Promise<void> {
       },
     });
     console.log(`✔ كورس: ${c.title} (${c.lessons.length} حصص)`);
+  }
+
+  // ── دفعة أكواد تجريبية (عبر نفس خدمة الأدمن: أكواد مجزّأة + سطر تدقيق) ─
+  if (await prisma.codeBatch.findFirst({ where: { label: DEMO_BATCH_LABEL } })) {
+    console.log(`• موجود: ${DEMO_BATCH_LABEL}`);
+  } else {
+    const asAdmin = { user: { sub: admin.id, role: admin.role }, ip: 'seed' } as unknown as Request;
+    const { codes } = await createBatch(asAdmin, { label: DEMO_BATCH_LABEL, value: 5_000, count: 10 });
+    // الأكواد الخام لا تُخزَّن — تظهر هنا مرة واحدة فقط
+    console.log(`✔ ${DEMO_BATCH_LABEL}: 10 أكواد × 50 ج.م`);
+    for (const c of codes) console.log(`   ${c}`);
   }
 
   console.log('\n✅ اكتمل الـ seed');

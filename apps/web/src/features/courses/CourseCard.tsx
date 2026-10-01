@@ -54,7 +54,7 @@ export function CourseCard({ course }: { course: CourseListItem }) {
           )}
         </div>
 
-        <h3 className="line-clamp-2 text-xl font-extrabold leading-snug text-ink-900">{course.title}</h3>
+        <h2 className="line-clamp-2 text-xl font-extrabold leading-snug text-ink-900">{course.title}</h2>
 
         <div className="mb-5 mt-2 flex items-center gap-1.5 text-sm text-ink-500">
           <Layers size={15} /> {course.lessonsCount} حصة

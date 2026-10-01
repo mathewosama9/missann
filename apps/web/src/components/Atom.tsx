@@ -209,13 +209,15 @@ export function Atom({ className = '', tone = 'light' }: { className?: string; t
 
     const io = new IntersectionObserver(([entry]) => {
       visible = entry.isIntersecting && !document.hidden;
-      visible ? start() : stop();
+      if (visible) start();
+      else stop();
     });
     io.observe(wrap);
 
     const onVisibility = () => {
       visible = !document.hidden;
-      visible ? start() : stop();
+      if (visible) start();
+      else stop();
     };
     document.addEventListener('visibilitychange', onVisibility);
     wrap.addEventListener('pointermove', onPointerMove);

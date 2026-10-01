@@ -22,7 +22,7 @@ let adminToken = '';
 let adminId = 0;
 let monthly = { id: 0, lessonId: 0 };
 let foundation = 0;
-let batchIds: number[] = [];
+const batchIds: number[] = [];
 
 const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
 const balanceOf = async (userId: number) =>

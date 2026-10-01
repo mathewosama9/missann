@@ -1,0 +1,19 @@
+# Caddy: شهادة HTTPS تلقائية (Let's Encrypt) للدومين، ثم كل الطلبات للواجهة (nginx) التي تمرّر /api للـ API.
+# DOMAIN و ACME_EMAIL من ملف البيئة (deploy/.env). وجّه سجل A للدومين لعنوان السيرفر قبل التشغيل.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	reverse_proxy web:80
+}
+
+# www ← الدومين الأساسي
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}

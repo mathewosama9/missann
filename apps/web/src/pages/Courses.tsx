@@ -49,6 +49,8 @@ export function Courses() {
     queryKey: ['courses', query],
     queryFn: () => coursesApi.list(query),
     placeholderData: keepPreviousData,
+    // الكتالوج عام ونادر التغيّر (والخادم يخزّنه مؤقتاً): التنقل بين الفلاتر والرجوع للصفحة بلا طلبات جديدة
+    staleTime: 5 * 60_000,
   });
 
   return (

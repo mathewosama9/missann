@@ -1,0 +1,103 @@
+# الإنتاج على سيرفر واحد (VPS):  docker compose -f docker-compose.prod.yml --env-file deploy/.env up -d --build
+# الخدمات: Caddy (HTTPS) ← web (nginx + ملفات الواجهة) ← api (Express + عمّال BullMQ) ← postgres + redis.
+# فقط Caddy يفتح منافذ للخارج (80/443)؛ القاعدة و Redis داخل الشبكة الخاصة فقط.
+# التفاصيل وخطوات التشغيل والنسخ الاحتياطي: docs/RUNBOOK.md
+
+name: missann
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-missann}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD في deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-missann}
+      # ترميز UTF-8 (بحث الأسماء العربية بفهارس trigram) + توقيت القاهرة لجلسات القاعدة (مثل التطوير)
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+      TZ: Africa/Cairo
+      PGTZ: Africa/Cairo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    <<: *restart
+    image: redis:7.4-alpine
+    # BullMQ يتطلب noeviction (لا حذف مفاتيح الطوابير عند امتلاء الذاكرة) + حفظ دائم AOF
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: missann-api:latest
+    env_file: deploy/.env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-missann}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-missann}?schema=public
+      REDIS_URL: redis://redis:6379
+      APP_URL: https://${DOMAIN:?اضبط DOMAIN في deploy/.env}
+      # Caddy ← nginx ← api: وسيطان قبل الـ API (IP الطالب الحقيقي لحدود الطلبات)
+      TRUST_PROXY: '2'
+      UPLOAD_DIR: /data/uploads
+      PRIVATE_UPLOAD_DIR: /data/private-uploads
+    volumes:
+      - uploads:/data/uploads
+      - private-uploads:/data/private-uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: missann-web:latest
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    <<: *restart
+    image: caddy:2.8-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?اضبط ACME_EMAIL في deploy/.env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  private-uploads:
+  caddy_data:
+  caddy_config:

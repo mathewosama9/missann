@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { env } from '../lib/env.js';
 
 export const authLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -27,9 +28,28 @@ export const playbackLimiter = rateLimit({
   message: { message: 'طلبات كثيرة، حاول بعد قليل' },
 });
 
+// Webhook الدفع بلا مصادقة: التوقيع يُفحص أولاً، لكن كل توقيع مزوّر يُسجَّل في التدقيق ← سقف لكل IP
+// (Paymob يرسل إشعاراً واحداً لكل عملية؛ 120/دقيقة أكبر بكثير من حجم المنصة)
+export const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// تجديد الجلسة: المتصفح يجدد مرة كل ~15 دقيقة لكل تبويب؛ السقف يمنع إغراق التجديد/تخمين التوكن
+export const refreshLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'طلبات كثيرة، حاول بعد دقيقة' },
+});
+
+// سقف عام لكل IP (مدرسة/سنتر خلف IP واحد ← ارفعه من RATE_LIMIT_PER_MIN)
 export const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 300,
+  limit: env.RATE_LIMIT_PER_MIN,
   standardHeaders: true,
   legacyHeaders: false,
 });

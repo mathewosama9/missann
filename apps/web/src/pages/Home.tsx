@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+// m = نسخة motion الخفيفة (الميزات من LazyMotion في main.tsx)
+import { m as motion } from 'framer-motion';
 import {
   PlayCircle,
   ShieldCheck,
@@ -89,7 +90,7 @@ export function Home() {
                 >
                   <div className="flex items-start justify-between">
                     <div className={`relative grid h-24 w-24 place-items-center rounded-2xl border-2 border-ink-900 ${m.tile}`}>
-                      <span className="absolute right-2 top-1.5 text-[10px] font-semibold opacity-60">{m.code}</span>
+                      <span className="absolute right-2 top-1.5 text-[10px] font-semibold opacity-90">{m.code}</span>
                       <span className="font-display text-5xl font-extrabold leading-none">{m.num}</span>
                       <span className="absolute bottom-1.5 text-[10px] font-semibold opacity-70">علوم</span>
                     </div>
@@ -217,10 +218,10 @@ export function Home() {
                   </span>
                   <div>
                     <div className="font-semibold text-ink-900">{t.name}</div>
-                    <div className="text-xs text-ink-400">{t.grade}</div>
+                    <div className="text-xs text-ink-500">{t.grade}</div>
                   </div>
                 </div>
-                <div className="flex gap-0.5 text-science-yellow" aria-label="تقييم ٥ من ٥">
+                <div className="flex gap-0.5 text-science-yellow" role="img" aria-label="تقييم ٥ من ٥">
                   {Array.from({ length: 5 }).map((_, k) => (
                     <Star key={k} size={14} fill="currentColor" strokeWidth={0} />
                   ))}
@@ -267,7 +268,8 @@ function Hero() {
       <div className="pointer-events-none absolute inset-0 bg-grid [mask-image:radial-gradient(ellipse_at_top,black_30%,transparent_75%)]" />
 
       <div className="container-app relative grid items-center gap-12 pb-10 pt-12 lg:grid-cols-[1.15fr_1fr] lg:pt-20">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        {/* العنوان الرئيسي ظاهر من أول رسم (أكبر عنصر في الصفحة — LCP): حركة انزلاق فقط بلا إخفاء */}
+        <motion.div initial={{ y: 20 }} animate={{ y: 0 }} transition={{ duration: 0.5 }}>
           <span className="eyebrow">
             <span className="h-2 w-2 rounded-full bg-lime-400 ring-4 ring-lime-200" />
             {PLATFORM.tagline}
@@ -304,7 +306,7 @@ function Hero() {
             </div>
             <div className="text-sm">
               <div className="font-semibold text-ink-900">+٥٠٠٠ طالب وطالبة</div>
-              <div className="text-ink-400">بيذاكروا العلوم معانا</div>
+              <div className="text-ink-500">بيذاكروا العلوم معانا</div>
             </div>
           </div>
         </motion.div>
@@ -338,7 +340,7 @@ function HeroBoard() {
             to={`/courses?grade=${g}`}
             className={`absolute ${pos} grid h-[84px] w-[84px] place-items-center rounded-2xl border-2 border-ink-900 shadow-stamp transition hover:rotate-0 hover:scale-105 ${m.tile}`}
           >
-            <span className="absolute right-2 top-1 text-[10px] font-semibold opacity-60">{m.code}</span>
+            <span className="absolute right-2 top-1 text-[10px] font-semibold opacity-90">{m.code}</span>
             <span className="font-display text-4xl font-extrabold leading-none">{m.num}</span>
             <span className="absolute bottom-1 text-[9px] font-semibold opacity-70">{GRADE_SHORT[g]}</span>
           </Link>
@@ -349,7 +351,7 @@ function HeroBoard() {
         <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-white"><Timer size={15} /></span>
         <div className="text-xs">
           <div className="font-semibold text-ink-900">كويز الحصة</div>
-          <div className="text-ink-400">١٠ / ١٠ درجات</div>
+          <div className="text-ink-500">١٠ / ١٠ درجات</div>
         </div>
       </div>
 
@@ -357,7 +359,7 @@ function HeroBoard() {
         <span className="grid h-8 w-8 place-items-center rounded-full bg-coral-400 text-ink-900"><BellRing size={15} /></span>
         <div className="text-xs">
           <div className="font-semibold text-ink-900">إشعار لولي الأمر</div>
-          <div className="text-ink-400">تم إرسال الدرجة</div>
+          <div className="text-ink-500">تم إرسال الدرجة</div>
         </div>
       </div>
 

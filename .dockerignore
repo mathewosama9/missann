@@ -1,0 +1,17 @@
+# سياق البناء = جذر المستودع؛ لا أسرار ولا ملفات مرفوعة ولا مخرجات محلية داخل الصور
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+**/uploads
+**/private-uploads
+**/coverage
+**/*.log
+.git
+.github
+.husky
+.vscode
+.idea
+playwright-report
+test-results

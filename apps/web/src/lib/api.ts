@@ -51,6 +51,8 @@ async function refreshToken(): Promise<string | null> {
     useAuth.getState().setAccessToken(data.accessToken);
     return data.accessToken as string;
   } catch {
+    // لا جلسة صالحة ← يُمسح التلميح أيضاً فلا تتكرر المحاولة مع كل فتح للموقع
+    useAuth.getState().clear();
     return null;
   }
 }

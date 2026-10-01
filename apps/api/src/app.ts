@@ -13,7 +13,8 @@ import { uploadsStatic } from './lib/uploads.js';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  // عدد الوسطاء أمام الـ API (nginx داخل الحاوية = 1؛ + Caddy/موازن أمامه = 2) ← req.ip الحقيقي لحدود الطلبات
+  app.set('trust proxy', env.TRUST_PROXY);
 
   app.use(helmet());
   app.use(
@@ -27,6 +28,11 @@ export function createApp() {
   app.use(cookieParser());
   app.use(pinoHttp({ logger }));
   app.use('/api', globalLimiter);
+  // الافتراضي: ردود الـ API خاصة ولا تُخزَّن (متصفح/وسيط)؛ الكتالوج العام وحده يعلن تخزيناً قصيراً
+  app.use('/api', (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
 
   app.use('/api/uploads', uploadsStatic);
   app.use('/api', apiRouter);

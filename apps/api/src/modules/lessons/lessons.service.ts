@@ -11,7 +11,7 @@ import { badRequest, forbidden, notFound } from '../../lib/http.js';
 import { env } from '../../lib/env.js';
 import { buildSignedEmbedUrl } from '../../lib/bunny.js';
 import { createYouTubeVideoKey } from '../../lib/youtube.js';
-import { assertEnrollment } from '../courses/enrollment.service.js';
+import { assertEnrollment, isEnrolled } from '../courses/enrollment.service.js';
 
 // النسبة يرسلها العميل؛ الخادم لا يقبل زيادة أكبر مما يمكن مشاهدته فعلاً منذ آخر حفظ
 // (أقصى سرعة تشغيل × الوقت المنقضي + هامش) — يمنع إرسال 100٪ مباشرة لتخطي شرط الإكمال
@@ -30,7 +30,8 @@ export function activeVideo(l: {
   return id ? { provider: l.videoProvider, id } : null;
 }
 
-// بوابة الوصول لحصة: الطاقم يصل دائماً؛ غيرهم يحتاج كورساً منشوراً + (معاينة مجانية أو اشتراك ساري)
+// بوابة الوصول لحصة: الطاقم يصل دائماً؛ غيرهم: معاينة مجانية أو اشتراك ساري.
+// كورس مخفي: المشترك الساري يكمل (الإخفاء يوقف الاشتراكات الجديدة فقط)، وغيره لا يرى الحصة أصلاً (404)
 export async function loadAccessibleLesson(lessonId: number, user: JwtPayload) {
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -49,7 +50,7 @@ export async function loadAccessibleLesson(lessonId: number, user: JwtPayload) {
   if (!lesson) throw notFound('الحصة غير موجودة');
   if (isStaff(user.role)) return lesson;
 
-  if (!lesson.course.isPublished) throw notFound('الحصة غير موجودة');
+  if (!lesson.course.isPublished && !(await isEnrolled(user.sub, lesson.courseId))) throw notFound('الحصة غير موجودة');
   if (!lesson.isFreePreview) await assertEnrollment(user.sub, lesson.courseId);
   return lesson;
 }

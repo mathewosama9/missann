@@ -137,6 +137,7 @@ export function templateVarErrors(vars: readonly string[], required: readonly st
 // قيمة متغيّر: نص عادي بسطر واحد وطول محدود (لا أحرف تحكم تكسر شكل الرسالة)
 const cleanValue = (v: string | number) =>
   String(v)
+    // eslint-disable-next-line no-control-regex -- إزالة محارف التحكم من القيم عمداً
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .trim()
     .slice(0, 120);

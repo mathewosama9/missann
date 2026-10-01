@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle2, XCircle, Info, AlertTriangle, type LucideIcon } from 'lucide-react';
 
 // إشعارات بشكل نافذة في منتصف الشاشة — بنفس واجهة sonner (toast.success/error/info/warning)
@@ -72,7 +72,7 @@ export function Notifier() {
   return (
     <AnimatePresence>
       {current && (
-        <motion.div
+        <m.div
           key={current.id}
           className="fixed inset-0 z-[100] grid place-items-center bg-ink-950/40 p-4 backdrop-blur-[2px]"
           initial={{ opacity: 0 }}
@@ -83,7 +83,7 @@ export function Notifier() {
           dir="rtl"
         >
           <NoticeCard notice={current} onClose={close} btnRef={btnRef} />
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );
@@ -101,7 +101,7 @@ function NoticeCard({
   const s = STYLES[notice.kind];
   const Icon = s.icon;
   return (
-    <motion.div
+    <m.div
       role={notice.kind === 'error' ? 'alertdialog' : 'status'}
       aria-live="assertive"
       aria-label={s.title}
@@ -112,14 +112,14 @@ function NoticeCard({
       transition={{ type: 'spring', stiffness: 380, damping: 26 }}
       onClick={(e) => e.stopPropagation()}
     >
-      <motion.span
+      <m.span
         className={`mx-auto grid h-16 w-16 place-items-center rounded-full border-2 border-ink-900 ${s.badge}`}
         initial={{ scale: 0, rotate: -30 }}
         animate={{ scale: 1, rotate: 0 }}
         transition={{ type: 'spring', stiffness: 420, damping: 16, delay: 0.08 }}
       >
         <Icon size={30} strokeWidth={2.2} />
-      </motion.span>
+      </m.span>
 
       <h2 className="mt-4 font-display text-2xl font-extrabold text-ink-900">{s.title}</h2>
       <p className="mt-1.5 leading-7 text-ink-600">{notice.message}</p>
@@ -129,13 +129,13 @@ function NoticeCard({
       </button>
 
       {notice.duration && (
-        <motion.span
+        <m.span
           className={`absolute bottom-0 right-0 h-1 ${s.bar}`}
           initial={{ width: '100%' }}
           animate={{ width: '0%' }}
           transition={{ duration: notice.duration / 1000, ease: 'linear' }}
         />
       )}
-    </motion.div>
+    </m.div>
   );
 }

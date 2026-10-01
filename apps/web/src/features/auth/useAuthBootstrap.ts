@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAuth } from '../../store/auth';
+import { hadSession, useAuth } from '../../store/auth';
 import { authApi } from './api';
 import { refreshSession } from '../../lib/api';
 
@@ -11,6 +11,8 @@ export function useAuthBootstrap(): boolean {
     let active = true;
     (async () => {
       try {
+        // زائر لم يدخل من هذا المتصفح قبلاً ← لا جلسة لتجديدها
+        if (!hadSession()) return;
         // refreshSession يشارك نفس الطلب لو استُدعي مرتين (StrictMode يشغّل الـ effect مرتين)
         const token = await refreshSession();
         if (!active || !token) return;

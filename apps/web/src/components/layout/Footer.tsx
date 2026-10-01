@@ -28,7 +28,7 @@ export function Footer() {
               </p>
             </div>
             <div className="md:col-span-3">
-              <h4 className="mb-4 text-xs font-semibold tracking-wide text-paper/40">روابط</h4>
+              <h2 className="mb-4 text-xs font-semibold tracking-wide text-paper/60">روابط</h2>
               <ul className="space-y-2.5 text-sm">
                 <li><Link to="/courses" className="text-paper/80 hover:text-lime-300">الكورسات</Link></li>
                 <li><Link to="/about" className="text-paper/80 hover:text-lime-300">عن مس آن</Link></li>
@@ -37,7 +37,7 @@ export function Footer() {
               </ul>
             </div>
             <div className="md:col-span-4">
-              <h4 className="mb-4 text-xs font-semibold tracking-wide text-paper/40">تواصل</h4>
+              <h2 className="mb-4 text-xs font-semibold tracking-wide text-paper/60">تواصل</h2>
               <a href={`tel:${PLATFORM.bookingPhone}`} className="mb-3 flex items-center gap-3 text-sm text-paper/80 hover:text-lime-300">
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-paper/10"><Phone size={16} /></span>
                 <span dir="ltr">{PLATFORM.bookingPhone}</span>

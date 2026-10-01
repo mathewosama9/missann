@@ -13,12 +13,21 @@ function prettyTransport(): pino.TransportSingleOptions | undefined {
   }
 }
 
+// أسرار لا تُكتب في السجلات: توكن الوصول، الكوكيز (الطلب)، وكوكي التحديث الخام في ترويسة الرد
+export const LOG_REDACT_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'res.headers["set-cookie"]',
+  '*.password',
+  '*.token',
+];
+
 export const logger = pino({
   // الاختبارات: الأخطاء فقط حتى لا تغرق النتائج بسجلات الطلبات
   level: isTest ? 'error' : isProd ? 'info' : 'debug',
   transport: prettyTransport(),
   redact: {
-    paths: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token'],
+    paths: LOG_REDACT_PATHS,
     censor: '[محجوب]',
   },
 });
